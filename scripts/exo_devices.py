@@ -85,10 +85,8 @@ DEVICES = {
         n_inputs=2,
     ),
     # --- MyoHand-calibrated variants ---
-    # These replace the literature force ratios with real joint-torque ratios
-    # (tau_j = F_j * MOMENT_ARMS_MM[j]), for the two devices with published
-    # per-joint/per-tendon force data (D1, D4). D2/D3 have no force data to
-    # correct (design-intent only), so no calibrated variant exists for them.
+    # For D1/D4 (published per-joint/per-tendon force data), these replace the
+    # literature force ratios with real joint-torque ratios (tau_j = F_j * MOMENT_ARMS_MM[j]).
     # Report both the original and calibrated K in the paper: the discrepancy
     # (D1 flips from distal-biased to proximal-biased) is itself a finding.
     "D1_underactuated_distal_calibrated": ExoDevice(
@@ -112,6 +110,28 @@ DEVICES = {
         ],
         tau_max=[1.0, 1.0],  # still placeholder: the 500 N rating is a tendon material/safety limit,
         n_inputs=2,           # not a typical operating force -- using it directly would be unrealistic
+    ),
+    # D2/D3 have no published force data at all (design-intent only), so there is
+    # nothing to correct via F*r like D1/D4. What we CAN check: both are described
+    # as a single continuous tendon crossing all three joints under one motor/tension
+    # (D2: fingertip-anchored synergy; D3: single-DOF cable) -- the same physical
+    # setup as D4's per-finger tendon. Under uniform tension, real torque ratio IS
+    # the moment-arm ratio, so this is the same MOMENT_ARMS_MM profile as D4's,
+    # just combined into ONE shared input (both fingers, single u) instead of two.
+    # Because neither reports per-joint forces, D2 and D3 collapse to an IDENTICAL
+    # calibrated K -- itself worth flagging: absent that data, this pipeline cannot
+    # physically distinguish D2's "flat" claim from D3's "uniform" claim.
+    "D2_synergy_cross_finger_calibrated": ExoDevice(
+        name="D2_synergy_cross_finger_calibrated",
+        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278],
+        tau_max=[1.0],  # placeholder; no force data exists to derive a real scale for D2
+        n_inputs=1,
+    ),
+    "D3_uniform_single_dof_calibrated": ExoDevice(
+        name="D3_uniform_single_dof_calibrated",
+        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278],
+        tau_max=[1.0],  # placeholder; no force data exists to derive a real scale for D3
+        n_inputs=1,
     ),
 }
 
