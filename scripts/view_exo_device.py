@@ -15,7 +15,9 @@ else:
     device_name = "D1_underactuated_distal"
 
 device = DEVICES[device_name]
-device.tau_max[:] = 0.03  # kept below joint-limit saturation so coupling-shape differences stay visible
+if not device.tau_max_is_calibrated:
+    device.tau_max[:] = 0.03  # kept below joint-limit saturation so coupling-shape differences stay visible
+# devices with tau_max_is_calibrated=True keep their MyoHand-derived tau_max as-is
 
 model = mujoco.MjModel.from_xml_path(MODEL_PATH)
 data = mujoco.MjData(model)
