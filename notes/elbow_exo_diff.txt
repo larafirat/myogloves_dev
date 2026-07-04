@@ -1,0 +1,11 @@
+--- myosuite/simhive/myo_sim/elbow/myoelbow_1dof6muscles.xml	2026-07-02 17:09:14
++++ myosuite/simhive/myo_sim/elbow/myoelbow_1dof6muscles_1dofexo.xml	2026-07-02 17:09:14
+@@ -8,7 +8,7 @@
+ ====================================================== -->
+ 
+     <include file="../elbow/assets/myoelbow_assets.xml"/>
+-    <include file="../elbow/assets/myoelbow_1dof6muscles_body.xml"/>
++    <include file="../elbow/assets/myoelbow_1dof6muscles_1dofexo_body.xml"/>
+     <include file="../scene/myosuite_scene.xml"/>
+     <compiler meshdir=".." texturedir=".."/>
+ 
