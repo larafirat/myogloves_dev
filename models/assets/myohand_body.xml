@@ -136,6 +136,7 @@
                             <joint axis="0 0 1" name="deviation" pos="0 0 0" range="-0.174533 0.436332" damping="0.25"/>
                             <joint axis="1 0 0" name="flexion" pos="0 0 0" range="-0.785398 0.785398" damping="0.25"/>
                             <geom mesh="lunate" name="lunate" type="mesh"/>
+                            <geom name="d1_motor_housing" class="device_d1" type="box" size="0.015 0.012 0.008" pos="-0.01 -0.02 0.02"/>
                             <geom name="WristExtensor_wrap" pos="0.0007 0 0.003" quat="0.807649 -0.0333177 0.588355 0.0207694" class="wrap" size="0.008 0.02" type="cylinder"/>
                             <geom name="WristFlexor_wrap" pos="0 -0.01 -0.004" quat="0.807649 -0.0333177 0.588355 0.0207694" class="wrap" size="0.007 0.02" type="cylinder"/>
                             <geom name="ExtensorEllipse_ellipsoid_wrap" pos="-0.00145969 -0.0120017 -0.00892632" quat="0.977473 -0.106567 0.15459 0.0963907" class="wrap" size="0.0237409"/>
@@ -328,6 +329,7 @@
                                   <joint axis="-0.054999 0.085899 0.994785"  name="mcp2_abduction" pos="0 0 0" range="-0.261799 0.261799"/>
                                   <geom class="skin" size="0.009 0.020" pos="0.004 -0.0210 0.00362" euler="1.45 0.15 -.35"/>
                                   <geom mesh="2proxph" name="2proxph" type="mesh"/>
+                                  <geom name="d1_cuff_mcp2" class="device_d1" type="capsule" size="0.0108 0.008" pos="0.004 -0.0210 0.00362" euler="1.45 0.15 -.35"/>
                                   <geom name="Secondpm_wrap" type="cylinder" size="0.0042 0.005" pos="0.0075 -0.0407 0.0061" euler="0.74193947 -1.47393055 0.70965087" class="wrap"/>
                                   <inertial pos="0 0 0" mass="0.01" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                   <!-- <site name="FDS2-P6" pos="0.001 -0.001 -0.009"/>
@@ -364,6 +366,7 @@
                                     <geom class="skin" size="0.008 0.012" pos="0.0013 -0.012 0.00" euler="1.5 0.14 -.35"/>
                                     <joint axis="0.97517 0.0998334 -0.197677" name="pm2_flexion" pos="0 0 0" range="0 1.5708"/>
                                     <geom mesh="2midph" name="2midph" type="mesh"/>
+                                    <geom name="d1_cuff_pip2" class="device_d1" type="capsule" size="0.0097 0.006" pos="0.0013 -0.012 0.00" euler="1.5 0.14 -.35"/>
                                     <geom name="Secondmd_wrap" pos="0.0036 -0.0243 0.0003" quat="0.749819 -0.0209733 -0.656264 0.0815428" class="wrap" size="0.003 0.005" type="cylinder"/>
                                     <inertial pos="0 0 0" mass="0.003" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                     <!-- <site name="FDS2-P8" pos="0.0013 -0.019 -0.0034"/>
@@ -394,6 +397,7 @@
                                       <joint axis="0.995004 0.0998334 0" name="md2_flexion" pos="0 0 0" range="0 1.5708"/>
                                       <geom class="skin" size="0.007 0.008" pos="0.001 -0.008 0.00" euler="1.5 0.14 -.35"/>
                                       <geom mesh="2distph" name="2distph" type="mesh"/>
+                                      <geom name="d1_cuff_dip2" class="device_d1" type="capsule" size="0.0085 0.005" pos="0.001 -0.008 0.00" euler="1.5 0.14 -.35"/>
                                       <inertial pos="0 0 0" mass="0.002" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                       <site name="FDP2-P10" pos="0.0007 -0.0056 -0.004"/>
                                       <site name="EDC2-P9" pos="0 -0.0056 0.0034"/>
@@ -441,6 +445,7 @@
                                 <site name="3rdmcp_ellipsoid_site_LU_RB3_side" pos="0 0 0"/>
                                 <body name="proxph3" pos="0.00024 -0.02629 0.001778">
                                   <geom class="skin" size="0.009 0.022" pos="0.001 -0.022 0.004" euler="1.5 0.045 -.35"/>
+                                  <geom name="d1_cuff_mcp3" class="device_d1" type="capsule" size="0.0108 0.009" pos="0.001 -0.022 0.004" euler="1.5 0.045 -.35"/>
                                   <joint axis="0.980067 0 0.198669" name="mcp3_flexion" pos="0 0 0" range="0 1.5708"/>
                                   <joint axis="-0.198669 0 0.980067" name="mcp3_abduction" pos="0 0 0" range="-0.261799 0.261799"/>
                                   <geom mesh="3proxph" name="3proxph" type="mesh"/>
@@ -473,6 +478,7 @@
                                   <body name="midph3" pos="0.00165 -0.044211 0.00623">
                                     <joint axis="1 0 0" name="pm3_flexion" pos="0 0 0" range="0 1.5708"/>
                                     <geom class="skin" size="0.008 0.014" pos="0.0012 -0.014 0.00" euler="1.55 0.06 -.35"/>
+                                    <geom name="d1_cuff_pip3" class="device_d1" type="capsule" size="0.0097 0.007" pos="0.0012 -0.014 0.00" euler="1.55 0.06 -.35"/>
                                     <geom mesh="3midph" name="3midph" type="mesh"/>
                                     <inertial pos="0 0 0" mass="0.002" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                     <geom name="Thirdmd_wrap" pos="0.0014 -0.0289 0.0012" quat="0.708186 -0.0221627 -0.701515 0.0765368" class="wrap" size="0.003 0.005" type="cylinder"/>
@@ -494,6 +500,7 @@
                                     <body name="distph3" pos="0.001365 -0.029047 0.001954">
                                       <joint axis="1 0 0" name="md3_flexion" pos="0 0 0" range="0 1.5708"/>
                                       <geom class="skin" size="0.007 0.008" pos="0.0013 -0.009 -.002" euler="1.6 .05 0"/>
+                                      <geom name="d1_cuff_dip3" class="device_d1" type="capsule" size="0.0085 0.005" pos="0.0013 -0.009 -.002" euler="1.6 .05 0"/>
                                       <geom mesh="3distph" name="3distph" type="mesh"/>
                                     <inertial pos="0 0 0" mass="0.002" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                       <site name="FDP3-P10" pos="0.0008 -0.004 -0.002"/>
