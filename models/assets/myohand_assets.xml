@@ -35,7 +35,7 @@
       <default class="device_d1">
         <!-- Device 1 (underactuated, distal-biased) placeholder hardware: cuffs + motor
              housing, purely visual (no collision) until real CAD/STL is available. -->
-        <geom group="5" contype="0" conaffinity="0" rgba="0.15 0.15 0.18 1"/>
+        <geom group="5" contype="0" conaffinity="0" rgba="0.15 0.15 0.18 1" material=""/>
       </default>
     </default>
   </default>
