@@ -34,8 +34,10 @@
       </default>
       <default class="device_d1">
         <!-- Device 1 (underactuated, distal-biased) placeholder hardware: cuffs + motor
-             housing, purely visual (no collision) until real CAD/STL is available. -->
-        <geom group="5" contype="0" conaffinity="0" rgba="0.15 0.15 0.18 1" material=""/>
+             housing, purely visual (no collision) until real CAD/STL is available.
+             group=0: MuJoCo's interactive viewer only shows groups 0-2 by default,
+             so group 5 (tried first) stayed invisible without a manual toggle. -->
+        <geom group="0" contype="0" conaffinity="0" rgba="0.15 0.15 0.18 1" material=""/>
       </default>
     </default>
   </default>
