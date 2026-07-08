@@ -255,6 +255,12 @@
                                   <body name="proximal_thumb" pos="0.0165 -0.0292 -0.0127">
                                     <joint axis="-0.084295 -0.203488 0.975442" name="mp_flexion" pos="0 0 0" range="-0.785398 0.698132"/>
                                     <geom class="skin" size="0.0085" fromto="0 0 0 0.014 -0.0259 -0.0101"/>
+                                    <!-- Extra collision volume on the palmar side of the proximal thumb:
+                                         the visual mesh is wider than the original single capsule, so the
+                                         box could appear to slip into the thumb even though MuJoCo was only
+                                         colliding the more proximal 1mc capsule. This pad makes the thumb's
+                                         contact envelope closer to what is rendered. -->
+                                    <geom name="thumbprox_pad" class="skin" type="ellipsoid" size="0.010 0.007 0.0045" pos="0.012 -0.020 -0.008" euler="0.20 1.35 1.45"/>
                                     <geom mesh="thumbprox" name="thumbprox" type="mesh"/>
                                     <geom name="d1_cuff_mp1" class="device_d1" type="capsule" size="0.0102" fromto="0 0 0 0.014 -0.0259 -0.0101"/>
                                     <geom name="IPthumb_wrap" type="cylinder" size="0.00450000 0.005" pos="0.0121 -0.0302 -0.0096" euler="0.30473449 0.01291544 0.08796459" class="wrap"/>
@@ -270,6 +276,11 @@
                                     <body name="distal_thumb" pos="0.014 -0.0259 -0.0101">
                                       <geom class="skin" size="0.0065" fromto="0 0 0 0.010 -0.018 -0.007"/>
                                       <joint axis="-0.050102 -0.479623 0.876043" name="ip_flexion" pos="0 0 0" range="-1.309 0.436332"/>
+                                      <!-- Distal thumb pad enlarged and thickened slightly so the rigid box
+                                           collides with the thumb pad before the visual tip appears to pass
+                                           through it. -->
+                                      <geom name="thumbdist_pad" class="skin" type="ellipsoid" size=".009 .0065 .0045" pos=".013 -.017 -.0065" euler="0.2 1.57 1.5"/>
+                                      <geom name="thumbdist_guard" class="skin" type="capsule" size="0.0075" fromto="0.001 -0.002 -0.001 0.014 -0.018 -0.007"/>
                                       <geom mesh="thumbdist" name="thumbdist" type="mesh"/>
                                       <geom name="d1_cuff_ip1" class="device_d1" type="capsule" size="0.0078" fromto="0 0 0 0.010 -0.018 -0.007"/>
                                       <inertial pos="0.0056 -0.0104 -0.0044" mass="0.003" fullinertia="5e-08 3e-08 5e-08 1e-08 1e-08 -1e-08"/>

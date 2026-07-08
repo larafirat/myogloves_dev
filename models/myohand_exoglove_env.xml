@@ -56,7 +56,7 @@
             SMALLER than the object and let it tip/rotate off-square (the
             "crooked" object the user saw). Floor is at z=-.4 (myosuite_scene
             "floor" geom). -->
-        <body name="start_pillar" pos="-0.152 -0.478 0.469" mocap="true">
+        <body name="start_pillar" pos="-0.160 -0.490 0.469" mocap="true">
             <!-- box, not cylinder: box-vs-box is one of MuJoCo's analytic
                 contact pairs; box-vs-cylinder fell back to a soft general
                 convex path that let the object sink ~1.4cm into the pillar
@@ -71,7 +71,7 @@
             pillar center and its half-height increase by 1.5cm. -->
             <geom name="start_pillar_geom" type="box" size="0.06 0.06 0.869" friction="2.5 0.02 0.002" rgba="0.3 0.3 0.35 1"/>
         </body>
-        <body name="grasp_object" pos="-0.152 -0.478 1.382">
+        <body name="grasp_object" pos="-0.160 -0.490 1.382">
             <!-- CENTER kept at the same proven height as the original flat
                 box (1.352) rather than resting the new taller box's bottom
                 on the old pillar height -- that would've raised the center

@@ -37,6 +37,36 @@ JOINT_NAMES = [
     "cmc_flexion",     # thumb CMC flexion
     "mp_flexion",      # thumb MP (metacarpophalangeal)
     "ip_flexion",      # thumb IP (interphalangeal)
+    "mcp4_flexion",    # ring MCP
+    "pm4_flexion",     # ring PIP
+    "md4_flexion",     # ring DIP
+    "mcp5_flexion",    # little MCP
+    "pm5_flexion",     # little PIP
+    "md5_flexion",     # little DIP
+]
+
+PASSIVE_COUPLED_JOINTS = [
+    "mcp4_flexion",
+    "pm4_flexion",
+    "md4_flexion",
+    "mcp5_flexion",
+    "pm5_flexion",
+    "md5_flexion",
+]
+
+# Passive ring/little coupling, not extra actuators: these torques are a soft
+# byproduct of driving index/middle, standing in for tendon-network and soft-
+# tissue coupling in the hand. They are intentionally weaker than the active
+# driven digits and only apply flexion, so we do not claim independent hardware
+# channels the source devices never published.
+PASSIVE_COUPLING_GAIN = np.array([0.22, 0.18, 0.12, 0.12, 0.10, 0.07], dtype=float)
+PASSIVE_SOURCE_ROWS = [
+    JOINT_NAMES.index("mcp3_flexion"),
+    JOINT_NAMES.index("pm3_flexion"),
+    JOINT_NAMES.index("md3_flexion"),
+    JOINT_NAMES.index("mcp3_flexion"),
+    JOINT_NAMES.index("pm3_flexion"),
+    JOINT_NAMES.index("md3_flexion"),
 ]
 
 # Real per-joint moment arms (mm), from MyoHand's own tendons via
@@ -62,11 +92,15 @@ MOMENT_ARMS_MM = {
     "cmc_flexion": 1.492,
     "mp_flexion": 7.120,
     "ip_flexion": 8.813,
+    # No ring/little moment-arm extraction has been added yet. D4_v2's shared
+    # ulnar channel therefore uses a proxy coupling profile rather than a true
+    # MyoHand-calibrated F*r derivation for those six joints.
 }
 
 
 class ExoDevice:
-    def __init__(self, name, K, tau_max, n_inputs, tau_max_is_calibrated=False):
+    def __init__(self, name, K, tau_max, n_inputs, tau_max_is_calibrated=False,
+                 passive_coupling=True):
         self.name = name
         self.n_inputs = n_inputs
         self.K = np.asarray(K, dtype=float).reshape(len(JOINT_NAMES), n_inputs)
@@ -74,9 +108,10 @@ class ExoDevice:
         # True only when tau_max is derived from real force/moment-arm data (see D1's
         # calibrated variant) rather than tuned by hand for visible demo behavior.
         self.tau_max_is_calibrated = tau_max_is_calibrated
+        self.passive_coupling = passive_coupling
 
     def torque(self, u):
-        """u: array-like of length n_inputs, each in [0, 1]. Returns (9,) joint torques."""
+        """u: array-like of length n_inputs, each in [0, 1]. Returns per-joint torques."""
         u = np.clip(np.asarray(u, dtype=float).reshape(self.n_inputs), 0.0, 1.0)
         return self.K @ (u * self.tau_max)
 
@@ -97,7 +132,7 @@ DEVICES = {
     # a simplification, not something the paper itself reports.
     "D1_underactuated_distal": ExoDevice(
         name="D1_underactuated_distal",
-        K=[0.73, 0.93, 1.00, 0.73, 0.93, 1.00, 0.0, 0.0, 0.0, 0.0],  # no thumb in this device
+        K=[0.73, 0.93, 1.00, 0.73, 0.93, 1.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[1.0],  # placeholder; see D1_underactuated_distal_calibrated for the real-torque version
         n_inputs=1,
     ),
@@ -116,7 +151,7 @@ DEVICES = {
     # the "_calibrated" variant below corrects for.
     "D2_synergy_cross_finger": ExoDevice(
         name="D2_synergy_cross_finger",
-        K=[0.85, 0.95, 1.00, 0.4184, 0.4677, 0.4922, 0.0, 0.0, 0.0, 0.0],  # thumb channel dropped, see comment above
+        K=[0.85, 0.95, 1.00, 0.4184, 0.4677, 0.4922, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[1.0],  # placeholder; see fingertip-force ambiguity note below
         n_inputs=1,
     ),
@@ -136,7 +171,7 @@ DEVICES = {
     # coupling strength, not a first-principles one.
     "D3_uniform_single_dof": ExoDevice(
         name="D3_uniform_single_dof",
-        K=[0.65, 1.00, 0.9375, 0.65, 1.00, 0.9375, 0.0, 0.0, 0.0, 0.0],  # this device has no thumb either
+        K=[0.65, 1.00, 0.9375, 0.65, 1.00, 0.9375, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[1.0],  # placeholder; no published force data to calibrate against (see comment above)
         n_inputs=1,
     ),
@@ -172,9 +207,44 @@ DEVICES = {
             [0.00, 0.00, 0.80],
             [0.00, 0.00, 0.90],
             [0.00, 0.00, 1.00],
+            [0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00],
         ],
         tau_max=[1.0, 1.0, 1.0],  # placeholder; real device has a 500 N tendon rating (safety/material limit,
         n_inputs=3,                # not a typical operating torque) -- see the _calibrated variant for the real value
+    ),
+    # Paper-faithful v2: keep index/middle/thumb as dedicated channels, but add a
+    # fourth shared tendon channel for ring+pinky (Sec. III: "ring and pinky...
+    # coupled together and connected to a single pulley and motor"). This leaves
+    # the current 3-channel D4 untouched while providing a separate version that
+    # matches the motor count more closely.
+    "D4_v2_hybrid_per_finger": ExoDevice(
+        name="D4_v2_hybrid_per_finger",
+        K=[
+            [0.80, 0.00, 0.00, 0.00],
+            [0.90, 0.00, 0.00, 0.00],
+            [1.00, 0.00, 0.00, 0.00],
+            [0.00, 0.80, 0.00, 0.00],
+            [0.00, 0.90, 0.00, 0.00],
+            [0.00, 1.00, 0.00, 0.00],
+            [0.00, 0.00, 0.70, 0.00],
+            [0.00, 0.00, 0.80, 0.00],
+            [0.00, 0.00, 0.90, 0.00],
+            [0.00, 0.00, 1.00, 0.00],
+            [0.00, 0.00, 0.00, 0.70],
+            [0.00, 0.00, 0.00, 0.80],
+            [0.00, 0.00, 0.00, 0.90],
+            [0.00, 0.00, 0.00, 0.46],
+            [0.00, 0.00, 0.00, 0.56],
+            [0.00, 0.00, 0.00, 0.66],
+        ],
+        tau_max=[1.0, 1.0, 1.0, 1.0],
+        n_inputs=4,
+        passive_coupling=False,
     ),
     # --- MyoHand-calibrated variants ---
     # For D1/D4 (published per-joint/per-tendon force data), these replace the
@@ -188,7 +258,7 @@ DEVICES = {
     #   middle: 4.1*8.457=34.67 -> 0.883 | 5.2*7.546=39.24 -> 0.999 | 5.6*2.664=14.92 -> 0.380
     "D1_underactuated_distal_calibrated": ExoDevice(
         name="D1_underactuated_distal_calibrated",
-        K=[1.000, 0.908, 0.618, 0.883, 0.999, 0.380, 0.0, 0.0, 0.0, 0.0],
+        K=[1.000, 0.908, 0.618, 0.883, 0.999, 0.380, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[0.03929],  # N*m; = 39.29 N*mm, the index-MCP torque above -- not a placeholder
         n_inputs=1,
         tau_max_is_calibrated=True,
@@ -230,10 +300,48 @@ DEVICES = {
             [0.000, 0.000, 0.169],
             [0.000, 0.000, 0.808],
             [0.000, 0.000, 1.000],
+            [0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000],
         ],
         tau_max=[0.13225, 0.11671, 0.12162],  # N*m; not a placeholder -- see derivation above
         n_inputs=3,
         tau_max_is_calibrated=True,
+    ),
+    # v2 calibrated: index/middle/thumb channels keep the real F*r calibration from
+    # D4 above. The new shared ring+pinky channel is only a proxy, because this repo
+    # has not yet derived ring/little moment arms from MyoHand or found a published
+    # force split for that coupled channel. We therefore borrow the middle-finger
+    # calibrated profile for ring and scale pinky down within the same shared motor,
+    # while reusing the middle-finger tau_max as the closest available tendon-force
+    # proxy. This is explicitly a v2 modeling assumption, not a direct paper number.
+    "D4_v2_hybrid_per_finger_calibrated": ExoDevice(
+        name="D4_v2_hybrid_per_finger_calibrated",
+        K=[
+            [1.000, 0.000, 0.000, 0.000],
+            [0.716, 0.000, 0.000, 0.000],
+            [0.452, 0.000, 0.000, 0.000],
+            [0.000, 1.000, 0.000, 0.000],
+            [0.000, 0.892, 0.000, 0.000],
+            [0.000, 0.315, 0.000, 0.000],
+            [0.000, 0.000, 0.438, 0.000],
+            [0.000, 0.000, 0.169, 0.000],
+            [0.000, 0.000, 0.808, 0.000],
+            [0.000, 0.000, 1.000, 0.000],
+            [0.000, 0.000, 0.000, 0.883],
+            [0.000, 0.000, 0.000, 0.787],
+            [0.000, 0.000, 0.000, 0.278],
+            [0.000, 0.000, 0.000, 0.575],
+            [0.000, 0.000, 0.000, 0.512],
+            [0.000, 0.000, 0.000, 0.181],
+        ],
+        tau_max=[0.13225, 0.11671, 0.12162, 0.11671],
+        n_inputs=4,
+        tau_max_is_calibrated=True,
+        passive_coupling=False,
     ),
     # D2/D3 have no published force data at all (design-intent only), so there is
     # nothing to correct via F*r like D1/D4. What we CAN check: both are described
@@ -247,13 +355,13 @@ DEVICES = {
     # physically distinguish D2's "flat" claim from D3's "uniform" claim.
     "D2_synergy_cross_finger_calibrated": ExoDevice(
         name="D2_synergy_cross_finger_calibrated",
-        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278, 0.0, 0.0, 0.0, 0.0],
+        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[1.0],  # placeholder; no force data exists to derive a real scale for D2
         n_inputs=1,
     ),
     "D3_uniform_single_dof_calibrated": ExoDevice(
         name="D3_uniform_single_dof_calibrated",
-        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278, 0.0, 0.0, 0.0, 0.0],
+        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[1.0],  # placeholder; no force data exists to derive a real scale for D3
         n_inputs=1,
     ),
@@ -265,6 +373,7 @@ class ExoApplicator:
 
     def __init__(self, model):
         self.dof_adr = [model.joint(name).dofadr[0] for name in JOINT_NAMES]
+        self.passive_dof_adr = [model.joint(name).dofadr[0] for name in PASSIVE_COUPLED_JOINTS]
 
     def apply(self, data, device, u, row_gate=None):
         """row_gate: optional (10,) per-joint-row multiplier applied AFTER
@@ -278,7 +387,16 @@ class ExoApplicator:
             tau = tau * row_gate
         for dof, t in zip(self.dof_adr, tau):
             data.qfrc_applied[dof] = t
+        # Weak passive flexion of ring/little fingers driven by the active
+        # middle-finger flexion profile. This keeps the extra digits involved
+        # in the grasp without claiming separate exoskeleton actuation.
+        if device.passive_coupling:
+            passive_tau = PASSIVE_COUPLING_GAIN * np.maximum(tau[PASSIVE_SOURCE_ROWS], 0.0)
+            for dof, t in zip(self.passive_dof_adr, passive_tau):
+                data.qfrc_applied[dof] = t
 
     def clear(self, data):
         for dof in self.dof_adr:
+            data.qfrc_applied[dof] = 0.0
+        for dof in self.passive_dof_adr:
             data.qfrc_applied[dof] = 0.0
