@@ -1,22 +1,22 @@
-"""Validates D3 (Thimabut et al. 2022): single input, uniform coupling.
-K3 = [1, 1, 1] per finger -- no distal bias, all three joints track together.
+"""Validates D3 (Thimabut, Terachinda & Kitisomprayoonkul, Rehabilitation
+Research and Practice 2022, Art. 3738219): single input, both fingers coupled,
+PIP-peaked coupling from the paper's reported max flexion angles (52 deg MCP,
+80 deg PIP, 75 deg DIP) -> K3 = [0.65, 1.00, 0.9375]. Not literally uniform
+(that was a placeholder assumption before this paper's numbers were confirmed).
 """
 
 from common import run_device
 from exo_devices import DEVICES
-
-TOLERANCE = 0.15  # rad; a looser bound below joint-limit saturation, where equal K still
-                  # leaves small qpos differences from each joint's own damping/inertia
 
 if __name__ == "__main__":
     device = DEVICES["D3_uniform_single_dof"]
     qpos = run_device(device, u=[1.0], tau_max=0.03)  # kept below saturation, see view_exo_device.py
     print("D3 final qpos:", qpos)
 
-    index_vals = [qpos["mcp2_flexion"], qpos["pm2_flexion"], qpos["md2_flexion"]]
-    middle_vals = [qpos["mcp3_flexion"], qpos["pm3_flexion"], qpos["md3_flexion"]]
+    # PIP (K=1.00) should lead, DIP (0.9375) close behind, MCP (0.65) trails.
+    assert qpos["pm2_flexion"] > qpos["mcp2_flexion"], "index PIP should out-flex MCP"
+    assert qpos["pm3_flexion"] > qpos["mcp3_flexion"], "middle PIP should out-flex MCP"
+    assert qpos["pm2_flexion"] >= qpos["md2_flexion"], "index PIP should not trail DIP"
+    assert qpos["pm3_flexion"] >= qpos["md3_flexion"], "middle PIP should not trail DIP"
 
-    assert max(index_vals) - min(index_vals) < TOLERANCE, "index joints not uniform"
-    assert max(middle_vals) - min(middle_vals) < TOLERANCE, "middle joints not uniform"
-
-    print("D3 PASS: uniform flexion confirmed across MCP/PIP/DIP on both fingers.")
+    print("D3 PASS: PIP-peaked flexion (per Thimabut et al.'s reported ROM) confirmed on both fingers.")

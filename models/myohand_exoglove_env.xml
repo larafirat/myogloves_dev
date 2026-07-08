@@ -1,0 +1,94 @@
+<mujoco model="MyoHand_v0.1.7_env">
+<!-- A structured grasp environment modeled on the MyoChallenge'24 myoMPL
+    "Prosthesis Co-Manipulation" task (Table I / Fig. 2 of the paper the user
+    supplied): start pillar, goal pillar, an object with full 6-DoF free
+    state, and an observation/reward structure built around reach error and
+    per-body touch categories, rather than the ad hoc single-purpose checks
+    in myohand_exoglove_grasp.xml (kept untouched, on purpose, so the two
+    environments can be compared side by side -- see grasp_env.py).
+
+    SCOPE NOTE vs. the source paper: their task is bimanual (myoArm + MPL
+    prosthetic) with a literal handover and object transport between two
+    pillars. We only actuate the hand/thumb via the exoskeleton devices (no
+    shoulder/elbow/wrist muscles are driven anywhere in this project), so
+    there is no "reach the palm toward the object" or "carry it to the goal"
+    phase available to us -- the object has to already be within the fingers'
+    natural closing arc. No goal pillar/bimanual handover here (removed on
+    request -- we're not doing bimanual manipulation); if the reach-phase
+    controller gets built later, a goal can be reintroduced then.
+
+    Object orientation CORRECTED per user: the 88mm dimension is vertical
+    (Z), not 28mm -- the box stands on its narrow 72x28mm face, long axis up.
+    This also changes the thumb-vs-finger contact geometry for the better:
+    logged contact normals during closing showed the thumb pressing straight
+    down onto the box's TOP face (normal ~(0,0,-1)) while the fingers pressed
+    the SIDE face (normal ~(0,1,0)) -- ~90 deg apart, not opposing, because
+    the box was too short (28mm) to give the thumb anything but the top to
+    land on. Standing it up gives the thumb a tall side face to meet the
+    fingers on instead. Y (72mm, the face the fingers were already pressing)
+    is left unchanged; only X (was 88mm) and Z (was 28mm) swap. -->
+
+    <include file="assets/myohand_assets.xml"/>
+    <include file="../../myosuite/simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir="../../myosuite/simhive/myo_sim" texturedir="../../myosuite/simhive/myo_sim"/>
+
+    <worldbody>
+        <include file="assets/myohand_body.xml"/>
+        <!-- REVISED after visual failure: raising the object to 1.455 was
+            wrong. Traced actual fingertip-mesh trajectories (thumbdist/
+            2distph/3distph geom_xpos) through the full closing motion with
+            no object present: the fingers curl DOWN and toward the wrist as
+            they close, so a HIGHER object sits where the OPEN hand starts,
+            not where the closed hand converges -- by the time the fingers
+            reach that height they've already curled past it. The genuine
+            convergence point (steady-state, fully closed) is thumb~
+            (-0.11,-0.40,1.38), index~(-0.16,-0.46,1.34), middle~
+            (-0.19,-0.46,1.34) -- centroid (-0.15,-0.44,1.35), matching
+            (within ~1cm) the ORIGINAL myohand_exoglove_grasp.xml placement
+            (-0.144,-0.458,1.352) that was already empirically verified to
+            get genuine contact on all 8 devices. Reverted to that proven
+            X/Y/Z rather than the guessed 1.455.
+
+            Pillar rebuilt as a floor-to-object cylinder (matches the
+            MyoAssist paper figure's pedestal, not a small plate floating in
+            mid-air) -- also wide enough (12cm diameter) to fully support the
+            object's 8.8x7.2cm footprint, since the old 6x6cm plate was
+            SMALLER than the object and let it tip/rotate off-square (the
+            "crooked" object the user saw). Floor is at z=-.4 (myosuite_scene
+            "floor" geom). -->
+        <body name="start_pillar" pos="-0.152 -0.478 0.469" mocap="true">
+            <!-- box, not cylinder: box-vs-box is one of MuJoCo's analytic
+                contact pairs; box-vs-cylinder fell back to a soft general
+                convex path that let the object sink ~1.4cm into the pillar
+                at rest (verified via contact dist ~ -0.0145 persisting
+                indefinitely, not settling toward 0). Same robust shape the
+            original working grasp_test.py support used, just full-height
+            now for the floor-up pedestal look. Raised 3cm after live
+            inspection of the large-pillar setup showed the object still
+            started below the fingers' initial closing band, so the hand
+            spent its first motion curling into empty space before it could
+            make contact. Keeping the base on the floor means both the
+            pillar center and its half-height increase by 1.5cm. -->
+            <geom name="start_pillar_geom" type="box" size="0.06 0.06 0.869" friction="2.5 0.02 0.002" rgba="0.3 0.3 0.35 1"/>
+        </body>
+        <body name="grasp_object" pos="-0.152 -0.478 1.382">
+            <!-- CENTER kept at the same proven height as the original flat
+                box (1.352) rather than resting the new taller box's bottom
+                on the old pillar height -- that would've raised the center
+                3cm and stalled the weaker uncalibrated devices (D1-D3
+                placeholder tau_max=0.03 Nm) well short of the object even
+                after 30s of simulated closing. Same center, taller box means
+                MORE of its surface (8.8cm span instead of 2.8cm) sits inside
+                the fingers' natural closing arc, not less. Live tuning with
+                the large pillar still showed a clear initial gap, so this
+                env version lifts the object 3cm with the pillar to start the
+                grasp inside the contact band instead of below it. A further
+                small X/Y nudge toward the hand brings the object closer to
+                the fingers' initial approach path without changing the basic
+                pedestal layout. -->
+            <freejoint/>
+            <geom name="grasp_object_geom" type="box" size="0.014 0.036 0.044" mass="0.097" friction="2.5 0.02 0.002" rgba="0.8 0.2 0.2 1"/>
+        </body>
+    </worldbody>
+
+</mujoco>

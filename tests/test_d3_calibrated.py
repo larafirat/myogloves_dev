@@ -1,11 +1,12 @@
 """Validates D3's MyoHand-calibrated variant.
 
-D3 has no published per-joint force data either, only a design description:
-"a single DOF... controls MCP, PIP, DIP" (Thimabut et al.) via one motor. Under
-the same uniform-tension assumption used for D2/D4, real torque ratio = moment-
-arm ratio, so D3's calibrated K is IDENTICAL to D2's -- this pipeline has no
-force data to physically distinguish D2's "flat" claim from D3's "uniform"
-claim, which is itself worth reporting rather than papering over.
+D3 (Thimabut et al. 2022) reports real per-joint ROM (52/80/75 deg at
+MCP/PIP/DIP -- see D3_uniform_single_dof's comment in exo_devices.py) but no
+per-joint FORCE data, and "a single DOF... controls MCP, PIP, DIP" via one
+motor. Under the same uniform-tension assumption used for D2/D4, real torque
+ratio = moment-arm ratio, so D3's calibrated K is IDENTICAL to D2's -- this
+pipeline has no force data to physically distinguish D2's design-intent K
+from D3's, which is itself worth reporting rather than papering over.
 """
 
 from common import run_device

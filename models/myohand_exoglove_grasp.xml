@@ -1,0 +1,71 @@
+<mujoco model="MyoHand_v0.1.7_grasp">
+<!-- Adds a small free-floating graspable object to the base myohand_exoglove
+    model, for visually/physically checking whether a device can close the
+    fingers onto something rather than just swing joints in free space.
+    Kept as a separate file so the existing per-device tests (which load
+    myohand_exoglove.xml directly) are unaffected. -->
+
+    <include file="assets/myohand_assets.xml"/>
+    <include file="../../myosuite/simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir="../../myosuite/simhive/myo_sim" texturedir="../../myosuite/simhive/myo_sim"/>
+
+    <worldbody>
+        <include file="assets/myohand_body.xml"/>
+        <!-- Object is a YCB-benchmark box (Calli et al. 2015, "Benchmarking in
+            Manipulation Research"; user-supplied spec): 97g, 72x88x28mm.
+            A full 3D rotation was tried (aligning the box's 88mm axis exactly
+            with the measured thumb-vs-finger separation vector, which has
+            real components in all 3 world axes: -60/-46/-38mm) to get
+            genuine opposing contact on all 3 digits. It DID improve contact
+            quality, but no orientation that satisfies that alignment also
+            has a face flush with gravity -- every rest attempt (flat
+            horizontal support, then a support tilted to match the closest
+            face at 0.84 alignment / ~33 deg off) either tipped over
+            immediately or slowly slid off the support under gravity's
+            in-plane component, which is dominated by the SAME axis (world X)
+            the hand needs open to reach the object -- retaining walls there
+            would just block the hand like the very first cup mistake did.
+            Reverted to a simple axis-aligned box (guaranteed stable, resting
+            flat like every other object in this file all session) rather
+            than keep chasing a perfectly-aligned but physically unstable
+            pose: 88mm along X (still the dominant separation component),
+            72mm along Y, 28mm (thinnest) along Z so it rests flat. This is a
+            known compromise -- opposition won't be as clean as the full
+            rotation gave, but the object will actually be there when the
+            hand arrives instead of already having fallen. -->
+        <!-- mocap (kinematic, not physics-driven) so it can be retracted at
+            runtime once grip is established -- a "contained" test where the
+            support never moves only ever proves the box didn't get knocked
+            off a platform it was already resting on, not that the hand is
+            actually bearing its weight. See grasp_controller.py's retract
+            logic and grasp_test.py's real test: pull the support away and
+            see if the object still stays up. -->
+        <!-- y-center shifted from -0.434 to -0.458: precise measurement showed
+            index/middle fingertips settling 1.8-4cm short of the box in Y
+            (X and Z were already fine). This got all 3 digits (index, middle,
+            thumb) to genuinely lock for the first time.
+            TRIED AND REVERTED: made the box tall (28mm -> 72mm) hoping the
+            thumb's downward-arriving path would hit a side face instead of
+            clearing over the top (contact data showed thumb normal ~straight
+            down, finger normal ~+Y -- still ~90 deg apart despite all 3
+            locking). It didn't fix the opposition (still ~90 deg apart) AND
+            regressed D1-D3 (they stopped gripping at all, likely because the
+            taller box is less stable and drifted further before the hand
+            arrived). Reverted to the stable 28mm-tall box. The remaining gap
+            is NOT an object-shape/placement problem: it's that the thumb's
+            velocity at first contact is dominated by -Z (downward) while the
+            fingers' is dominated by +Y (sideways), and that's intrinsic to
+            how cmc_abduction + cmc_flexion + mp/ip_flexion are driven
+            together from one shared tendon ratio -- fixing it needs a
+            different thumb CONTROL strategy (e.g. sequencing abduction before
+            flexion), not another object reshape/reposition. -->
+        <body name="grasp_support" pos="-0.144 -0.458 1.3325" mocap="true">
+            <geom name="grasp_support_geom" type="box" size="0.06 0.06 0.005" friction="2.5 0.02 0.002" rgba="0.3 0.3 0.35 1"/>
+        </body>
+        <body name="grasp_object" pos="-0.144 -0.458 1.352">
+            <freejoint/>
+            <geom name="grasp_object_geom" type="box" size="0.044 0.036 0.014" mass="0.097" friction="2.5 0.02 0.002" rgba="0.8 0.2 0.2 1"/>
+        </body>
+    </worldbody>
+
+</mujoco>

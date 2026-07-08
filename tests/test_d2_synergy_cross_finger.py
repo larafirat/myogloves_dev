@@ -1,5 +1,8 @@
-"""Validates D2 (Masia/Xiloyannis lineage): single input, flatter distal bias
-than D1, coupled fingers (same u drives both). K2 = [0.85, 0.95, 1.00].
+"""Validates D2 (Alicea, Xiloyannis, Chiaradia, Barsotti, Frisoli & Masia,
+Wearable Technologies 2021): single input, flatter distal bias than D1, and a
+literature-derived (not guessed) cross-finger asymmetry from the paper's
+multichannel synergy pulley (Fig. 3b, channel diameters thumb/middle/index =
+2.2/0.95/1.93 cm -> middle receives ~0.49x index's stroke on the shared shaft).
 """
 
 from common import run_device
@@ -17,4 +20,9 @@ if __name__ == "__main__":
     index_spread = qpos["md2_flexion"] - qpos["mcp2_flexion"]
     print(f"D2 index MCP-to-DIP spread: {index_spread:.4f} rad (expect smaller than D1's spread at same tau_max)")
 
-    print("D2 PASS: flatter distal-biased flexion confirmed on both fingers.")
+    # Pulley diameter ratio (index 1.93cm > middle 0.95cm) means index should flex
+    # noticeably more than middle at every joint -- this is new, literature-derived
+    # behavior that a uniform cross-finger K would not have shown.
+    assert qpos["md2_flexion"] > qpos["md3_flexion"], "index (larger pulley channel) should out-flex middle"
+
+    print("D2 PASS: flatter distal-biased flexion confirmed, with pulley-derived index>middle asymmetry.")
