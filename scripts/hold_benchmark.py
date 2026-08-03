@@ -389,27 +389,13 @@ class KMatrixAdapter(Adapter):
     # and the object is already at rest on its pillar at t=0 (verified: only
     # start_pillar contacts, 0.00mm penetration), so nothing is gained by
     # settling anyway.
-    settle_cap = 0
-    # Fast close. This env knocks its own object off the pillar at ~2.4s (the
-    # undriven hand sags into it), while a 1.5s ramp plus the 1.0s contact
-    # gate needs contact sustained to ~2.5s -- so a slow close fails by a
-    # knife-edge margin for reasons that have nothing to do with the device.
-    # Verified directly: driving at full input from step 0 keeps the object
-    # secured (z stable at 1.393 through 8s) whereas ramping loses it. The
-    # original D1-D4 protocol likewise engages immediately.
-    # STEP input, not a ramp. Measured: in this environment ANY ramp -- even
-    # 0.3s -- loses the object before the grasp forms, while driving at full
-    # input from step 0 secures it (object z stable at 1.395, 4 digits). The
-    # object is simply not stably supported here once the hand is present.
-    #
-    # This is a documented DEVIATION from the benchmark spec's "ramp u from
-    # 0->1 over a fixed closing window". It is forced by the environment, not
-    # chosen, and it means closing dynamics are NOT being measured for this
-    # device family -- only steady-state grip. Results for these devices are
-    # therefore not fully comparable to the glove_dev family, which is ramped
-    # as specified. Fixing this properly requires making the exoglove env's
-    # object support stable, which is an environment change.
-    closing_seconds = 0.002
+    # With WristHold active this env is stable undriven (object z held at
+    # 1.387 across 3000 steps, vs falling by ~1200 before), so it can now use
+    # the SAME settle and the SAME spec-compliant ramp as the glove_dev
+    # family. The earlier step-input deviation is no longer needed and has
+    # been removed -- closing dynamics are measured for both families again.
+    settle_cap = 2000
+    closing_seconds = CLOSING_SECONDS
 
     # D1-D4 are driven by the control policy they were designed with
     # (GraspController, including its thumb-sequencing row_gate) rather than
@@ -435,6 +421,8 @@ class KMatrixAdapter(Adapter):
         mass = mass_override if mass_override is not None else float(m.body_mass[oid])
         mass *= 1.0 + rng.uniform(-MASS_JITTER_FRAC, MASS_JITTER_FRAC)
         m.body_mass[oid] = mass
+        if self.pos_override is not None:
+            m.body_pos[oid] = np.array(self.pos_override, dtype=float)
         m.body_pos[oid] = m.body_pos[oid] + rng.uniform(-POS_JITTER_M, POS_JITTER_M, 3)
 
         pin_contacts(m)
@@ -449,6 +437,7 @@ class KMatrixAdapter(Adapter):
         # joint->dof mapping here; it already handles passive coupling and
         # row gating consistently with the other D1-D4 scripts.
         self.applicator = ExoApplicator(m)
+        self.wrist = None   # created after mj_forward in run_trial
         self.controller = None
         if self.device is not None:
             from grasp_controller import GraspController
@@ -469,14 +458,52 @@ class KMatrixAdapter(Adapter):
     def set_input(self, model, data, u):
         # u (the harness ramp level) is deliberately ignored here: this
         # device family supplies its own closing profile via GraspController.
-        if self.device is None:
-            return  # bare_msk baseline: no device assistance at all
-        u_dev = self.controller.step(model, data)
-        self.applicator.apply(data, self.device, u=u_dev,
-                              row_gate=self.controller.row_gate)
+        if self.device is not None:
+            u_dev = self.controller.step(model, data)
+            self.applicator.apply(data, self.device, u=u_dev,
+                                  row_gate=self.controller.row_gate)
+        if self.wrist is not None:
+            self.wrist.apply(model, data)
 
     def release_support(self, model, data):
         data.mocap_pos[self.pillar_mocap] = self.pillar_home + np.array([0.5, 0.0, 0.0])
+
+
+# Wrist joints. The exoglove env has no arm and nothing holding the wrist,
+# so it collapses under gravity (measured over 1200 undriven steps:
+# pro_sup +0.306 rad, deviation -0.175, flexion +0.118) and swings the hand
+# into the object, knocking it off its pillar. The glove_dev env never shows
+# this because its 6-DoF position-servo arm holds the wrist steady. A freely
+# flopping wrist is not a property of any device under test -- it is a
+# missing boundary condition -- so it is held here, mirroring the arm
+# stabilisation already applied on the other side.
+WRIST_JOINTS = ["pro_sup", "deviation", "flexion"]
+WRIST_KP = 20.0
+WRIST_KV = 2.0
+
+
+class WristHold:
+    """PD hold on the wrist joints at their initial pose.
+
+    Applies to dofs that are NOT in exo_devices.JOINT_NAMES, so it never
+    clobbers the torques ExoApplicator writes for the device itself.
+    """
+
+    def __init__(self, model, data):
+        self.dofs, self.targets = [], []
+        for name in WRIST_JOINTS:
+            if not _has_joint(model, name):
+                continue
+            j = model.joint(name)
+            self.dofs.append(j.dofadr[0])
+            self.targets.append(float(data.qpos[j.qposadr[0]]))
+        self.qadr = [model.joint(n).qposadr[0] for n in WRIST_JOINTS
+                     if _has_joint(model, n)]
+
+    def apply(self, model, data):
+        for dof, qa, tgt in zip(self.dofs, self.qadr, self.targets):
+            err = tgt - float(data.qpos[qa])
+            data.qfrc_applied[dof] += WRIST_KP * err - WRIST_KV * float(data.qvel[dof])
 
 
 class HealthyExogloveEnvAdapter(KMatrixAdapter):
@@ -507,6 +534,8 @@ class HealthyExogloveEnvAdapter(KMatrixAdapter):
     def set_input(self, model, data, u):
         for aid in self.healthy_ids:
             data.ctrl[aid] = u
+        if self.wrist is not None:
+            self.wrist.apply(model, data)
 
 
 def _has_body(model, name):
@@ -533,6 +562,8 @@ def run_trial(adapter, seed, t_max, mass_override=None):
     dt = m.opt.timestep
 
     mujoco.mj_forward(m, d)
+    if hasattr(adapter, "wrist"):
+        adapter.wrist = WristHold(m, d)
     _, ok = settle(m, d, adapter.oid, adapter.settle_cap)
     if not ok:
         return {"outcome": Outcome.SETUP_FAIL, "hold_s": 0.0, "censored": False,
