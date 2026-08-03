@@ -538,6 +538,83 @@ class HealthyExogloveEnvAdapter(KMatrixAdapter):
             self.wrist.apply(model, data)
 
 
+class KMatrixInGloveDevAdapter(GloveDevAdapter):
+    """D1-D4 devices ported INTO the glove_dev environment.
+
+    Why: the exoglove environment turned out to be unusable -- it has no arm
+    and nothing holding the wrist, so the hand only ever reached its object
+    by sagging into it under gravity, and once the wrist is held at its
+    authored pose nothing can grasp there at all (healthy hand included,
+    across 48 tested placements). The glove_dev env has a stabilised 6-DoF
+    servo arm and placements validated against a healthy-hand control, so
+    porting the devices to it gives one environment where every device can be
+    measured on equal terms.
+
+    What carries over unchanged: the arm stabilisation, the pinned contact
+    model, the object mass/inertia correction, the placement, and the
+    protocol. What differs per device is only the actuation.
+
+    extra_thumb / extra_thumb_v2 do not exist in this model (they are bodies
+    added to the exoglove env's own copy of myohand_body.xml). Their K rows
+    are zero for every device ported here, which is asserted at build time
+    rather than assumed -- a device relying on them would be silently
+    weakened otherwise.
+    """
+
+    drive = "own_controller"
+
+    def __init__(self, device_name, model_path, obj_name, r, half_h, mass,
+                 label, bottom_offset=0.0, op_preshape=0.0):
+        super().__init__(model_path, obj_name, r, half_h, mass, label,
+                         bottom_offset=bottom_offset)
+        self.device_name = device_name
+        self.op_preshape = op_preshape
+        self.preshape = (f"native OP at {op_preshape}" if op_preshape
+                         else "none (device drives its own opposition)")
+
+    def build(self, rng, mass_override=None):
+        from exo_devices import DEVICES, JOINT_NAMES
+        from grasp_controller import GraspController
+
+        m, d = super().build(rng, mass_override=mass_override)
+        # The exo tendons belong to the OTHER device -- silence them.
+        d.ctrl[self.flex] = 0.0
+        d.ctrl[self.thumb] = 0.0
+        d.ctrl[m.actuator("OP").id] = self.op_preshape
+
+        self.device = DEVICES[self.device_name]
+        if not self.device.tau_max_is_calibrated:
+            self.device.tau_max[:] = 0.03
+
+        # Map device joint rows onto this model, tolerating absent joints but
+        # refusing to silently drop a row that actually carries torque.
+        probe = self.device.torque(np.ones(self.device.n_inputs))
+        self.rows = []
+        for idx, jname in enumerate(JOINT_NAMES):
+            if _has_joint(m, jname):
+                self.rows.append((idx, m.joint(jname).dofadr[0]))
+            elif abs(float(probe[idx])) > 1e-9:
+                raise RuntimeError(
+                    f"{self.device_name} drives '{jname}' with "
+                    f"{probe[idx]:.4f} N*m but that joint is absent from "
+                    f"{self.model_path}; porting it would understate the device")
+        obj_geom = self.obj_geoms[0]
+        self.controller = GraspController(m, self.device, obj_geom,
+                                          **dict(self.device.controller_overrides))
+        return m, d
+
+    def set_input(self, model, data, u):
+        data.ctrl[self.flex] = 0.0
+        data.ctrl[self.thumb] = 0.0
+        u_dev = self.controller.step(model, data)
+        tau = self.device.torque(u_dev)
+        if self.controller.row_gate is not None:
+            tau = tau * self.controller.row_gate
+        data.qfrc_applied[:] = 0.0
+        for idx, dof in self.rows:
+            data.qfrc_applied[dof] = float(tau[idx])
+
+
 def _has_body(model, name):
     try:
         model.body(name)
@@ -679,6 +756,20 @@ def glove_dev_adapters():
         "glove_dev_tuna": GloveDevAdapter(f"{base}/myohand_glove_dev_tuna.xml",
                                           "007_tuna_fish_can", 0.042, 0.016, 0.171,
                                           "glove_dev/tuna"),
+        **{f"port_{d}": KMatrixInGloveDevAdapter(
+                d, f"{base}/myohand_glove_dev.xml", "009_gelatin_box",
+                0.036, 0.014, 0.097, f"PORT/{d.replace('_calibrated','')}",
+                bottom_offset=-0.044)
+           for d in ("D1_underactuated_distal_calibrated",
+                     "D2_synergy_cross_finger_calibrated",
+                     "D3_uniform_single_dof_calibrated",
+                     "D4_v2_hybrid_per_finger_calibrated")},
+        **{f"portOP_{d}": KMatrixInGloveDevAdapter(
+                d, f"{base}/myohand_glove_dev.xml", "009_gelatin_box",
+                0.036, 0.014, 0.097, f"PORT+OP/{d.replace('_calibrated','')}",
+                bottom_offset=-0.044, op_preshape=0.5)
+           for d in ("D1_underactuated_distal_calibrated",
+                     "D4_v2_hybrid_per_finger_calibrated")},
         "healthy_box": HealthyHandAdapter(f"{base}/myohand_glove_dev.xml",
                                           "009_gelatin_box", 0.036, 0.014, 0.097,
                                           "HEALTHY/box", bottom_offset=-0.044),
