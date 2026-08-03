@@ -203,7 +203,17 @@ class Adapter:
     name = "?"
     preshape = None
     settle_cap = 6000   # env-specific, see SETTLE_VEL_EPS comment
-    drive = "open_loop_ramp"   # or "own_controller"  # human-readable note on any native-muscle pre-shape used
+    drive = "open_loop_ramp"   # or "own_controller"
+    # World z of the object's BOTTOM face relative to its body_pos.z. The
+    # support pillar's top must meet it exactly. 0 for the cans (collision
+    # geom is (0,0,half_h) with size half_h); -0.044 for the gelatin box,
+    # whose 90deg rotation puts the bottom below body_pos.z.
+    bottom_offset = 0.0
+    pos_override = None        # (x,y,z) to place the object at, or None
+    # Closing-window length. Per-environment, because it is bounded by how
+    # long that environment can hold the object before the grasp forms, not
+    # by anything about the device. See KMatrixAdapter for the exoglove env.
+    closing_seconds = CLOSING_SECONDS  # human-readable note on any native-muscle pre-shape used
 
     def build(self, rng, mass_override=None):
         raise NotImplementedError
@@ -235,7 +245,9 @@ class GloveDevAdapter(Adapter):
     preshape = "native OP (opponens pollicis) at 0.5"
     settle_cap = 6000   # OP activation transient needs ~5000 steps
 
-    def __init__(self, model_path, obj_name, obj_radius, obj_half_h, obj_mass, label):
+    def __init__(self, model_path, obj_name, obj_radius, obj_half_h, obj_mass, label,
+                 bottom_offset=0.0):
+        self.bottom_offset = bottom_offset
         self.model_path = model_path
         self.obj_name = obj_name
         self.radius = obj_radius
@@ -263,6 +275,12 @@ class GloveDevAdapter(Adapter):
             if m.geom_bodyid[g] == oid:
                 m.geom_friction[g] = [2.5, 0.02, 0.002]
 
+        # Placement override (device-neutral placement studies). Set body_pos
+        # directly rather than offsetting the OBJT* slides: those joint axes
+        # are in the BODY frame, so for the rotated gelatin box a "+y" offset
+        # actually moves it along world -z.
+        if self.pos_override is not None:
+            m.body_pos[oid] = np.array(self.pos_override, dtype=float)
         # Trial randomisation: jitter the object's resting placement.
         m.body_pos[oid] = m.body_pos[oid] + rng.uniform(-POS_JITTER_M, POS_JITTER_M, 3)
 
@@ -284,6 +302,12 @@ class GloveDevAdapter(Adapter):
         self.flex = m.actuator("EXO_FLEX").id
         self.thumb = m.actuator("EXO_THUMB").id
         self.pillar_mocap = m.body("glove_dev_support_pillar").mocapid[0]
+        if self.pos_override is not None:
+            top = float(m.body_pos[oid][2]) + self.bottom_offset
+            half = top / 2.0
+            m.geom_size[m.geom("glove_dev_support_pillar_geom").id] = [0.08, 0.08, half]
+            d.mocap_pos[self.pillar_mocap] = [float(m.body_pos[oid][0]),
+                                              float(m.body_pos[oid][1]), half]
         self.obj_geoms = [i for i in range(m.ngeom) if m.geom_bodyid[i] == oid]
         self.digit_ids = {
             dig: {m.body(b).id for b in bs if _has_body(m, b)}
@@ -366,6 +390,26 @@ class KMatrixAdapter(Adapter):
     # start_pillar contacts, 0.00mm penetration), so nothing is gained by
     # settling anyway.
     settle_cap = 0
+    # Fast close. This env knocks its own object off the pillar at ~2.4s (the
+    # undriven hand sags into it), while a 1.5s ramp plus the 1.0s contact
+    # gate needs contact sustained to ~2.5s -- so a slow close fails by a
+    # knife-edge margin for reasons that have nothing to do with the device.
+    # Verified directly: driving at full input from step 0 keeps the object
+    # secured (z stable at 1.393 through 8s) whereas ramping loses it. The
+    # original D1-D4 protocol likewise engages immediately.
+    # STEP input, not a ramp. Measured: in this environment ANY ramp -- even
+    # 0.3s -- loses the object before the grasp forms, while driving at full
+    # input from step 0 secures it (object z stable at 1.395, 4 digits). The
+    # object is simply not stably supported here once the hand is present.
+    #
+    # This is a documented DEVIATION from the benchmark spec's "ramp u from
+    # 0->1 over a fixed closing window". It is forced by the environment, not
+    # chosen, and it means closing dynamics are NOT being measured for this
+    # device family -- only steady-state grip. Results for these devices are
+    # therefore not fully comparable to the glove_dev family, which is ramped
+    # as specified. Fixing this properly requires making the exoglove env's
+    # object support stable, which is an environment change.
+    closing_seconds = 0.002
 
     # D1-D4 are driven by the control policy they were designed with
     # (GraspController, including its thumb-sequencing row_gate) rather than
@@ -435,6 +479,36 @@ class KMatrixAdapter(Adapter):
         data.mocap_pos[self.pillar_mocap] = self.pillar_home + np.array([0.5, 0.0, 0.0])
 
 
+class HealthyExogloveEnvAdapter(KMatrixAdapter):
+    """Healthy hand IN THE D1-D4 ENVIRONMENT, driving native flexors.
+
+    This control was missing and its absence mattered. "bare_msk" is not a
+    healthy hand -- it applies no device torque AND no muscle activation, so
+    it is a LIMP hand and is guaranteed to fail. Without a genuinely healthy
+    condition in this environment, D1-D4's 0% could equally mean "these
+    devices are inadequate" or "nothing can grasp at this object placement".
+    The glove_dev environment has its own healthy control (HealthyHandAdapter)
+    but that is a different model with a different object in a different
+    coordinate frame, so it says nothing about this one.
+    """
+
+    HEALTHY_MUSCLES = HealthyHandAdapter.HEALTHY_MUSCLES
+    preshape = "n/a -- healthy hand, native muscles driven directly"
+    drive = "native_muscles"
+
+    def build(self, rng, mass_override=None):
+        m, d = super().build(rng, mass_override=mass_override)
+        self.healthy_ids = [m.actuator(n).id for n in self.HEALTHY_MUSCLES
+                            if _has_actuator(m, n)]
+        self.device = None          # no exoskeleton torque at all
+        self.controller = None
+        return m, d
+
+    def set_input(self, model, data, u):
+        for aid in self.healthy_ids:
+            data.ctrl[aid] = u
+
+
 def _has_body(model, name):
     try:
         model.body(name)
@@ -464,7 +538,7 @@ def run_trial(adapter, seed, t_max, mass_override=None):
         return {"outcome": Outcome.SETUP_FAIL, "hold_s": 0.0, "censored": False,
                 "max_digits": 0, "mass": adapter.mass_used}
 
-    ramp_steps = int(CLOSING_SECONDS / dt)
+    ramp_steps = max(1, int(adapter.closing_seconds / dt))
     gate_steps_needed = int(GATE_MIN_SECONDS / dt)
     gate_run = 0
     gate_passed_step = None
@@ -567,7 +641,7 @@ def glove_dev_adapters():
     return {
         "glove_dev_box": GloveDevAdapter(f"{base}/myohand_glove_dev.xml",
                                          "009_gelatin_box", 0.036, 0.014, 0.097,
-                                         "glove_dev/box"),
+                                         "glove_dev/box", bottom_offset=-0.044),
         "glove_dev_can": GloveDevAdapter(f"{base}/myohand_glove_dev_can.xml",
                                          "005_tomato_soup_can", 0.033, 0.05, 0.349,
                                          "glove_dev/can"),
@@ -576,7 +650,7 @@ def glove_dev_adapters():
                                           "glove_dev/tuna"),
         "healthy_box": HealthyHandAdapter(f"{base}/myohand_glove_dev.xml",
                                           "009_gelatin_box", 0.036, 0.014, 0.097,
-                                          "HEALTHY/box"),
+                                          "HEALTHY/box", bottom_offset=-0.044),
         "healthy_can": HealthyHandAdapter(f"{base}/myohand_glove_dev_can.xml",
                                           "005_tomato_soup_can", 0.033, 0.05, 0.349,
                                           "HEALTHY/can"),
@@ -593,15 +667,21 @@ def kmatrix_adapters(names):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["pilot", "run", "masssweep"])
+    ap.add_argument("mode", choices=["pilot", "run", "masssweep", "placesweep"])
     ap.add_argument("--devices", default="")
     ap.add_argument("--trials", type=int, default=20)
     ap.add_argument("--tmax", type=float, default=T_MAX_DEFAULT)
     ap.add_argument("--masses", default="")
     ap.add_argument("--out", default="")
+    ap.add_argument("--xs", default="")   # placesweep grid
+    ap.add_argument("--ys", default="")
+    ap.add_argument("--zs", default="")
     a = ap.parse_args()
 
     pool = glove_dev_adapters()
+    pool["healthy_exoglove_env"] = HealthyExogloveEnvAdapter(
+        "bare_msk", "myogloves_dev/models/myohand_exoglove_env.xml",
+        label="HEALTHY/exoglove_env")
     pool.update(kmatrix_adapters([
         "bare_msk", "D1_underactuated_distal_calibrated",
         "D2_synergy_cross_finger_calibrated", "D3_uniform_single_dof_calibrated",
@@ -610,6 +690,27 @@ def main():
 
     names = [n for n in a.devices.split(",") if n] or list(pool)
     trials = 3 if a.mode == "pilot" else a.trials
+
+    if a.mode == "placesweep":
+        import itertools
+        ad = pool[names[0]]
+        xs = [float(v) for v in a.xs.split(",")]
+        ys = [float(v) for v in a.ys.split(",")]
+        zs = [float(v) for v in a.zs.split(",")]
+        ranked = []
+        for z, x, y in itertools.product(zs, xs, ys):
+            ad.pos_override = (x, y, z)
+            res = [run_trial(ad, seed=2000 + i, t_max=a.tmax) for i in range(trials)]
+            sm = summarise(res)
+            ranked.append((sm["hold_median"], sm["grasp_rate"], x, y, z))
+            print(f"  ({x},{y},{z}) grasp={sm['grasp_rate']*100:5.1f}% "
+                  f"hold_med={sm['hold_median']:5.2f}s", flush=True)
+        ranked.sort(reverse=True)
+        print("=" * 60)
+        print(f"BEST PLACEMENTS for {ad.name}:")
+        for h, g, x, y, z in ranked[:8]:
+            print(f"  ({x},{y},{z}) grasp={g*100:5.1f}% hold_med={h:5.2f}s")
+        return
 
     all_out = {}
     for name in names:
