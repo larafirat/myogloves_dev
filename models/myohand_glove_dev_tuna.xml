@@ -307,7 +307,7 @@
              (0.03,0.06,0.18) -> 0.248s hold, which is the placement still
              set below.
 
-             FINAL STATUS -- THIS OBJECT IS NOT GRASPABLE BY THIS DESIGN.
+             STATUS -- CONFIGURATION-DEPENDENT, SEE CORRECTION AT END.
              That 0.248s did not survive the contact-model fix. Fingers were
              penetrating this can by up to 32.2mm (the worst of the three
              objects -- see run_glove_dev_grasp_can.py's CONTACT STIFFENING
@@ -329,8 +329,21 @@
              exoglove only drives index + middle + thumb. The two objects
              that DO work (gelatin box, soup can) are both tall and narrow.
 
-             The placement below is retained only so the model still loads
-             and can be viewed; it does not produce a successful grasp. -->
+             CORRECTION (added after the holding benchmark was built): the
+             "not graspable" conclusion above was measured with a 25x
+             hand-joint damping boost applied. That boost was later removed
+             from the benchmark as an unfair confound (it is calibrated to
+             this device's muscle-scale forces and disables the ~0.13 N*m
+             K-matrix devices entirely). With damping at its native value and
+             contacts pinned, this object IS grasped -- 100% of 20 randomised
+             trials pass the >=2-digit/1s contact gate -- it simply does not
+             hold long: median 0.36s +- 0.32.
+
+             So the honest statement is not "ungraspable" but "grasped
+             reliably, held poorly", and it remains the worst of the three
+             shapes (box 1.07s > can 0.74s > tuna 0.36s), consistent with a
+             flat wide disc being the hardest case for thumb/finger
+             opposition. See scripts/hold_benchmark.py. -->
         <body name="glove_dev_support_pillar" pos="0.03 0.06 0.09" mocap="true">
             <geom name="glove_dev_support_pillar_geom" type="box" size="0.08 0.08 0.09" rgba="0.3 0.3 0.35 1"/>
         </body>
