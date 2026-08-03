@@ -300,6 +300,57 @@ class GloveDevAdapter(Adapter):
         data.mocap_pos[self.pillar_mocap] = data.mocap_pos[self.pillar_mocap] + np.array([0.5, 0.0, 0.0])
 
 
+class HealthyHandAdapter(GloveDevAdapter):
+    """Healthy MyoHand reference: no device at all, driving the hand's OWN
+    flexor muscles at full strength.
+
+    Serves two purposes.
+
+    (1) FEASIBILITY CONTROL. Device results are uninterpretable without it:
+        a device scoring 0% could mean the device is inadequate, or it could
+        mean the object placement is simply unreachable for any hand. Running
+        an unimpaired hand through the identical protocol separates those.
+
+    (2) POSTURE REFERENCE. The joint trajectory recorded here is x_ref(t),
+        the healthy closing posture for this object, against which a device's
+        posture error can later be measured. Note the reference is only
+        comparable if generated with the SAME object placement and initial
+        hand pose as the device trials -- which it is, since this reuses the
+        glove_dev adapter's build() unchanged and only swaps what is driven.
+    """
+
+    # Long finger flexors (deep + superficial), thumb flexor, and opponens.
+    HEALTHY_MUSCLES = ["FDP2", "FDP3", "FDP4", "FDP5",
+                       "FDS2", "FDS3", "FDS4", "FDS5",
+                       "FPL", "OP"]
+    preshape = "n/a -- healthy hand, native muscles driven directly"
+    drive = "native_muscles"
+
+    def build(self, rng, mass_override=None):
+        m, d = super().build(rng, mass_override=mass_override)
+        self.healthy_ids = [m.actuator(n).id for n in self.HEALTHY_MUSCLES
+                            if _has_actuator(m, n)]
+        # The exo tendons are present in the model but must stay silent: this
+        # is the unassisted hand.
+        d.ctrl[self.flex] = 0.0
+        d.ctrl[self.thumb] = 0.0
+        return m, d
+
+    def set_input(self, model, data, u):
+        data.ctrl[self.flex] = 0.0
+        data.ctrl[self.thumb] = 0.0
+        for aid in self.healthy_ids:
+            data.ctrl[aid] = u
+
+
+def _has_actuator(model, name):
+    try:
+        model.actuator(name)
+        return True
+    except Exception:
+        return False
+
+
 class KMatrixAdapter(Adapter):
     """D1-D4 (and the bare_msk no-device baseline): torque devices applying
     tau = K @ (u * tau_max) to the hand joints via qfrc_applied."""
@@ -523,6 +574,15 @@ def glove_dev_adapters():
         "glove_dev_tuna": GloveDevAdapter(f"{base}/myohand_glove_dev_tuna.xml",
                                           "007_tuna_fish_can", 0.042, 0.016, 0.171,
                                           "glove_dev/tuna"),
+        "healthy_box": HealthyHandAdapter(f"{base}/myohand_glove_dev.xml",
+                                          "009_gelatin_box", 0.036, 0.014, 0.097,
+                                          "HEALTHY/box"),
+        "healthy_can": HealthyHandAdapter(f"{base}/myohand_glove_dev_can.xml",
+                                          "005_tomato_soup_can", 0.033, 0.05, 0.349,
+                                          "HEALTHY/can"),
+        "healthy_tuna": HealthyHandAdapter(f"{base}/myohand_glove_dev_tuna.xml",
+                                           "007_tuna_fish_can", 0.042, 0.016, 0.171,
+                                           "HEALTHY/tuna"),
     }
 
 
