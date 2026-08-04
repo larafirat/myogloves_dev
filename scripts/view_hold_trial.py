@@ -31,9 +31,104 @@ import mujoco.viewer
 import numpy as np
 
 from hold_benchmark import (
-    DROP_THRESHOLD_M, GATE_MIN_DIGITS, GATE_MIN_SECONDS, T_MAX_DEFAULT,
-    WristHold, _digits_in_contact, glove_dev_adapters, settle,
+    DROP_THRESHOLD_M, GATE_MIN_DIGITS, GATE_MIN_SECONDS, SplintedThumbAdapter,
+    T_MAX_DEFAULT, WristHold, _digits_in_contact, glove_dev_adapters, settle,
 )
+
+EXO_TENDONS = ("exo_thumb_tendon", "exo_flex_tendon", "exo_ext_tendon")
+
+# One colour per actuator channel. Channel meaning differs per device (see the
+# legend printed at startup), which is exactly the thing worth seeing.
+CHANNEL_RGBA = [
+    (0.20, 0.85, 1.00, 1.0),   # cyan
+    (1.00, 0.75, 0.10, 1.0),   # amber
+    (0.35, 1.00, 0.35, 1.0),   # green
+    (1.00, 0.35, 0.75, 1.0),   # pink
+    (0.65, 0.50, 1.00, 1.0),   # violet
+    (1.00, 0.45, 0.25, 1.0),   # orange
+]
+SPLINT_RGBA = (0.92, 0.92, 0.96, 1.0)   # rigid orthotic white
+UNDRIVEN_RGBA = (0.55, 0.55, 0.58, 1.0)  # grey: this device does not drive it
+
+
+def _set_body_rgba(model, body_id, rgba):
+    for g in range(model.ngeom):
+        if model.geom_bodyid[g] == body_id:
+            model.geom_rgba[g] = rgba
+
+
+def style_device(model, adapter):
+    """Make the window show THIS device rather than Tyrone's glove.
+
+    Why this is needed at all: D1-D4 have no geometry. They are ported into
+    this environment as joint torques written to qfrc_applied, with no straps,
+    linkages or tendons of their own -- there is literally no hardware to
+    render. Meanwhile Tyrone's three exo tendons are part of the model file and
+    stay DRAWN in every condition even when silenced, so without this every
+    device looked like his glove wearing a different set of finger motions.
+
+    So: hide his tendons unless he is the device being shown, and paint each
+    digit by the actuator channel that drives it. The colours are the device's
+    actual K matrix -- which joints it drives, and which motor drives each --
+    so two devices differ on screen exactly where they differ in substance.
+    Grey means the device does not drive that digit at all.
+
+    This is a visualisation of the abstraction, not of hardware. It cannot show
+    strap routing or where a linkage sits, because none of that is modelled.
+    """
+    from exo_devices import JOINT_NAMES
+
+    is_tyrone = not hasattr(adapter, "device_name")
+    legend = []
+
+    if not is_tyrone:
+        for name in EXO_TENDONS:
+            try:
+                model.tendon_rgba[model.tendon(name).id] = (0, 0, 0, 0)
+            except KeyError:
+                pass
+        legend.append("Tyrone's exo tendons hidden (not this device's hardware)")
+
+    if is_tyrone:
+        legend.append("cyan/pink/green tendons = EXO_FLEX / EXO_EXT / EXO_THUMB (real routed tendons)")
+        return legend
+
+    device = adapter.device
+    # Grey every digit first, then paint the driven ones. Painting only the
+    # driven ones would leave undriven digits in default bone colour, which
+    # reads as "normal" rather than as "this device ignores this finger".
+    for bodies in adapter.DIGIT_BODIES.values():
+        for b in bodies:
+            try:
+                _set_body_rgba(model, model.body(b).id, UNDRIVEN_RGBA)
+            except KeyError:
+                pass
+
+    for col in range(device.n_inputs):
+        driven = []
+        for row, jname in enumerate(JOINT_NAMES):
+            if device.K[row, col] == 0.0:
+                continue
+            try:
+                bid = model.joint(jname).bodyid[0]
+            except KeyError:
+                continue
+            _set_body_rgba(model, bid, CHANNEL_RGBA[col % len(CHANNEL_RGBA)])
+            driven.append(jname)
+        if driven:
+            names = ("CHANNEL " + str(col))
+            legend.append(f"{names}: {', '.join(driven)}  "
+                          f"(tau_max {device.tau_max[col]:.4f} N*m)")
+
+    if isinstance(adapter, SplintedThumbAdapter):
+        for b in adapter.DIGIT_BODIES["thumb"]:
+            try:
+                _set_body_rgba(model, model.body(b).id, SPLINT_RGBA)
+            except KeyError:
+                pass
+        legend.append("WHITE thumb = rigid C-bar splint, held at -45 deg MCP, not actuated")
+
+    return legend
 
 
 def main():
@@ -62,6 +157,9 @@ def main():
         ad.wrist = WristHold(m, d)
 
     print(f"\n{ad.name}   seed={a.seed}   pre-shape: {ad.preshape}")
+    print("=" * 68)
+    for line in style_device(m, ad):
+        print("  " + line)
     print("=" * 68)
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
