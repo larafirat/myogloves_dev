@@ -769,6 +769,8 @@ def glove_dev_adapters():
                 0.036, 0.014, 0.097, f"PORT+OP/{d.replace('_calibrated','')}",
                 bottom_offset=-0.044, op_preshape=0.5)
            for d in ("D1_underactuated_distal_calibrated",
+                     "D2_synergy_cross_finger_calibrated",
+                     "D3_uniform_single_dof_calibrated",
                      "D4_v2_hybrid_per_finger_calibrated")},
         "healthy_box": HealthyHandAdapter(f"{base}/myohand_glove_dev.xml",
                                           "009_gelatin_box", 0.036, 0.014, 0.097,
