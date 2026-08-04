@@ -625,6 +625,99 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
             data.qfrc_applied[dof] = float(tau[idx])
 
 
+class SplintedThumbAdapter(KMatrixInGloveDevAdapter):
+    """D3 (Thimabut et al. 2022) WITH the rigid thumb splint it ships with.
+
+    Closes a modelling gap that was documented but never fixed. D3 is a
+    two-fingered device: it drives index and middle, and the thumb is not
+    actuated at all -- it is immobilised by a C-bar splint at 50 deg MCP
+    flexion (plus a latex glove for friction). The thumb is the surface the
+    fingers grasp AGAINST. Simulating D3 without it meant simulating a device
+    with no opposing digit, which is why it could not pinch anything on its own
+    and had to borrow the OP muscle pre-shape to score at all -- an assist the
+    real device does not need and does not have.
+
+    A splint is not a muscle, and the difference is not cosmetic:
+      * It is PASSIVE. No activation, so op_preshape is 0 here. The patient
+        this device is for cannot oppose their own thumb; that is the point.
+      * It is RIGID. It cannot be pushed out of the way by grasp forces, and
+        equally it cannot adapt to the object. Modelled as a stiff PD hold on
+        all four thumb DoFs rather than a muscle that can be overpowered.
+      * It holds a DIFFERENT posture. The OP pre-shape leaves the thumb MP and
+        IP resting at their EXTENSION limits (+40 and +21 deg measured); the
+        splint flexes the MP to -45 deg. Those are opposite ends of the joint.
+
+    Posture, and how much of it comes from the paper:
+      mp_flexion   -- the paper's own 50 deg MCP flexion, clamped to this
+                      model's -45 deg limit (MyoHand's thumb MP simply does not
+                      travel to 50). Note flexion is NEGATIVE at this joint;
+                      see the sign convention note in exo_devices.py.
+      ip_flexion   -- 0, thumb held straight. A C-bar is a rigid arc; it does
+                      not flex the IP. Not stated in the paper.
+      cmc_*        -- held at the pose the OP pre-shape settles to, this repo's
+                      existing reference for "thumb in opposition". The paper
+                      gives no CMC angle, so this is an explicit assumption:
+                      the splint's whole purpose is to park the thumb in
+                      opposition, and this is the model's version of that.
+
+    RESULT (15 trials, box, median hold):
+        D3 with no thumb at all      6.7% grasp   0.11s   <- the old gap
+        D3 borrowing the OP muscle  93.3% grasp   0.84s
+        D3 with its actual splint  100.0% grasp   1.59s +- 0.06
+    Modelling the real opposition mechanism is worth more than an order of
+    magnitude, and turns the device that looked weakest into the strongest in
+    the set. Read it with one caveat, though: this splint is an ideal rigid
+    constraint, with no strap compliance and no soft tissue between the orthosis
+    and the bone, so some of the margin is the rigidity rather than the design.
+    Every actively-driven thumb here is competing against a perfect post.
+    """
+
+    # Measured once from the settled OP=0.5 pre-shape in this model; re-measure
+    # if the hand model or the pre-shape level changes.
+    SPLINT_POSE = {
+        "cmc_abduction": -0.562,   # -32.2 deg, OP-settled opposition
+        "cmc_flexion": 0.714,      # +40.9 deg, OP-settled opposition
+        "mp_flexion": -0.785,      # -45.0 deg = the paper's 50 deg, at this model's limit
+        "ip_flexion": 0.0,         # straight; the C-bar does not flex the IP
+    }
+    # The splint is written into the MODEL as joint stiffness about a spring
+    # reference, not applied as a per-step force from set_input(). set_input is
+    # only called during the closing ramp and the hold, whereas settle() runs
+    # thousands of steps before either -- a per-step hold would let the thumb
+    # sag out of the splint under gravity before the trial even started, and
+    # the pose set in build() would be gone by the time it mattered. A passive
+    # elastic constraint that is simply always present is also a better
+    # description of what an orthosis is.
+    SPLINT_STIFFNESS = 40.0   # stiff: an orthosis, not a muscle
+    SPLINT_DAMPING = 4.0
+
+    preshape = "rigid C-bar thumb splint (passive); no muscle pre-shape"
+
+    def __init__(self, device_name, model_path, obj_name, r, half_h, mass,
+                 label, bottom_offset=0.0):
+        super().__init__(device_name, model_path, obj_name, r, half_h, mass,
+                         label, bottom_offset=bottom_offset, op_preshape=0.0)
+        # The parent sets self.preshape from op_preshape, which would report
+        # this condition as having no pre-shape at all. It has one -- just a
+        # passive orthotic rather than a muscle.
+        self.preshape = self.__class__.preshape
+
+    def build(self, rng, mass_override=None):
+        m, d = super().build(rng, mass_override=mass_override)
+        for jname, target in self.SPLINT_POSE.items():
+            j = m.joint(jname)
+            lo, hi = m.jnt_range[j.id]
+            target = float(np.clip(target, lo, hi))
+            m.jnt_stiffness[j.id] = self.SPLINT_STIFFNESS
+            m.qpos_spring[j.qposadr[0]] = target
+            m.dof_damping[j.dofadr[0]] = self.SPLINT_DAMPING
+            # Start IN the splint rather than driving to it: the patient is
+            # strapped in before the trial begins, not during it.
+            d.qpos[j.qposadr[0]] = target
+        mujoco.mj_forward(m, d)
+        return m, d
+
+
 def _has_body(model, name):
     try:
         model.body(name)
@@ -782,6 +875,10 @@ def glove_dev_adapters():
                      "D2_synergy_cross_finger_calibrated",
                      "D3_uniform_single_dof_calibrated",
                      "D4_v2_hybrid_per_finger_calibrated")},
+        "splint_D3": SplintedThumbAdapter(
+            "D3_uniform_single_dof_calibrated", f"{base}/myohand_glove_dev.xml",
+            "009_gelatin_box", 0.036, 0.014, 0.097, "SPLINT/D3_uniform_single_dof",
+            bottom_offset=-0.044),
         "healthy_box": HealthyHandAdapter(f"{base}/myohand_glove_dev.xml",
                                           "009_gelatin_box", 0.036, 0.014, 0.097,
                                           "HEALTHY/box", bottom_offset=-0.044),

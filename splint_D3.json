@@ -1,0 +1,58 @@
+{
+  "port_D3_uniform_single_dof_calibrated": {
+    "n": 15,
+    "grasp_rate": 0.06666666666666667,
+    "setup_fail": 0,
+    "survival_rate": 0.0,
+    "no_grasp": 14,
+    "slipped": 1,
+    "survived": 0,
+    "censored": 0,
+    "hold_mean": 0.11,
+    "hold_median": 0.11,
+    "hold_sd": 0.0,
+    "preshape": "none (device drives its own opposition)"
+  },
+  "portOP_D3_uniform_single_dof_calibrated": {
+    "n": 15,
+    "grasp_rate": 0.9333333333333333,
+    "setup_fail": 0,
+    "survival_rate": 0.0,
+    "no_grasp": 1,
+    "slipped": 14,
+    "survived": 0,
+    "censored": 0,
+    "hold_mean": 0.8410000000000001,
+    "hold_median": 0.838,
+    "hold_sd": 0.20324256065484528,
+    "preshape": "native OP at 0.5"
+  },
+  "splint_D3": {
+    "n": 15,
+    "grasp_rate": 1.0,
+    "setup_fail": 0,
+    "survival_rate": 0.0,
+    "no_grasp": 0,
+    "slipped": 15,
+    "survived": 0,
+    "censored": 0,
+    "hold_mean": 1.5848000000000002,
+    "hold_median": 1.594,
+    "hold_sd": 0.06460340548299295,
+    "preshape": "none (device drives its own opposition)"
+  },
+  "healthy_box": {
+    "n": 15,
+    "grasp_rate": 0.8666666666666667,
+    "setup_fail": 0,
+    "survival_rate": 0.4,
+    "no_grasp": 2,
+    "slipped": 7,
+    "survived": 6,
+    "censored": 6,
+    "hold_mean": 2.8675384615384614,
+    "hold_median": 2.056,
+    "hold_sd": 2.1002728638355785,
+    "preshape": "n/a -- healthy hand, native muscles driven directly"
+  }
+}
