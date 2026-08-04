@@ -106,6 +106,18 @@ SETTLE_VEL_EPS = 1e-3      # m/s, object linear speed considered "at rest"
 SETTLE_QUIET_STEPS = 50    # consecutive quiet steps required
 GATE_MIN_DIGITS = 2        # >= N distinct digits in contact...
 GATE_MIN_SECONDS = 1.0     # ...continuously for >= this long
+# KNOWN WEAKNESS in that gate, observed but not yet acted on: it counts ANY two
+# distinct digits, with no requirement that they oppose each other. Watching
+# seed 1000 in the viewer, glove_dev and splint_D3 gate on (index, middle,
+# thumb) -- a real tripod -- while D1 and D4 gate on (index, LITTLE). A pinky
+# brushing the object certifies the grasp for scoring purposes even though
+# nothing is opposing anything. Since the gate opens the hold clock, a device
+# gated on a non-opposing pair starts its clock in a configuration that was
+# never going to hold, which would depress its hold time for a reason that is
+# about the metric rather than the device. Changing GATE_MIN_DIGITS or adding
+# an opposition requirement would move every number in this repo, so it is
+# recorded here rather than changed silently -- but D1 and D4 sitting at the
+# bottom of the table is not safe to interpret until it is resolved.
 DROP_THRESHOLD_M = 0.05    # object CoM falling this far below its release
                            # height counts as failure
 T_MAX_DEFAULT = 5.0

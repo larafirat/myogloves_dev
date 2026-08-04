@@ -54,6 +54,33 @@ Two metrics, because they answer different questions.
    by these numbers. Fixing it properly means adding a transmission-loss term
    between the device and the joint, which no device definition here has.
 
+   SECOND THING THIS MODE CAUGHT -- D4's thumb opposition lands in the wrong
+   basin. Measured free-air thumb abduction excursion, against a healthy
+   reference of -16.7 deg (negative = opposing, toward the fingers):
+
+       D4 as currently tuned            +28.5 deg   (abducting AWAY)
+       D4 with the flexion gate delayed  -4.4 deg   (opposing, but weak)
+
+   The device definition is not at fault -- driven with raw torque and no
+   controller, D4's thumb reaches -34.8 deg, correctly opposed. The problem is
+   recruitment ORDER. Tracing the joint through the ramp, abduction leads
+   correctly at first (-3.8 deg at t=1s), then thumb flexion arrives with
+   roughly twice the torque (0.098 and 0.122 N*m at MP and IP, against 0.053
+   for abduction) and drags the CMC saddle joint positive, ending at +27 deg.
+   The abduct_lead/abduct_full parameters exist precisely to hold flexion back
+   while abduction leads, but they were tuned when abduction shared the thumb's
+   flexion channel; now that it has its own channel both ramp together, so
+   flexion gates in before abduction has won the joint.
+
+   Raising abduct_lead 0.24 -> 0.40 flips the sign, at the cost of MP flexion
+   (-38.5 -> -28.1 deg). That is a real trade between posture fidelity and grip
+   force, so it is left as a decision rather than silently retuned -- changing
+   it moves every hold number in the repo.
+
+   Note the asymmetry this exposes between the two benchmarks: the hold
+   benchmark cannot see any of this, because a thumb abducting the wrong way
+   still contacts the object and still counts.
+
 2. GRASP POSTURE ERROR (mode `grasp`) -- object present, posture sampled at the
    moment the contact gate passes.
 
@@ -310,11 +337,14 @@ def main():
     a = ap.parse_args()
 
     pool = glove_dev_adapters()
+    # splint_D3 rather than portOP_D3: the splint is the device as it actually
+    # ships, and the OP-borrowing variant holds the thumb at the OPPOSITE end
+    # of its travel (+40 vs -45 deg at the MP), so the two are not
+    # interchangeable for a posture measurement in particular.
     default = ["glove_dev_box"] + [
         f"portOP_{d}" for d in ("D1_underactuated_distal_calibrated",
                                 "D2_synergy_cross_finger_calibrated",
-                                "D3_uniform_single_dof_calibrated",
-                                "D4_v2_hybrid_per_finger_calibrated")]
+                                "D4_v2_hybrid_per_finger_calibrated")] + ["splint_D3"]
     names = [n for n in a.devices.split(",") if n] or default
 
     run = rom_trial if a.mode == "rom" else grasp_trial
