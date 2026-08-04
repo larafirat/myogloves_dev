@@ -4,7 +4,20 @@ Joint order (index + middle + thumb + ring + little, 16 DoF):
     index MCP, index PIP, index DIP, middle MCP, middle PIP, middle DIP,
     thumb CMC abduction, thumb CMC flexion, thumb MP flexion, thumb IP flexion,
     ring MCP, ring PIP, ring DIP, little MCP, little PIP, little DIP
-Positive torque = flexion (or abduction, for cmc_abduction) assistance.
+SIGN CONVENTION -- read this before adding or editing any K row. There is no
+single "positive = flexion" rule, because MyoHand's joint coordinates do not
+have one. The twelve finger joints all flex at positive q, but the thumb flexes
+at NEGATIVE q for cmc_abduction, mp_flexion and ip_flexion, and at positive q
+only for cmc_flexion. K rows therefore carry signs, taken from the signed
+moment arms in MOMENT_ARMS_MM rather than chosen by hand.
+
+This was got wrong for a long time. compute_moment_arms.py returned abs(), so
+every thumb row came out positive and every device that drove the thumb drove
+it backwards -- into extension and hyperabduction -- for the whole of what was
+supposed to be a grasp. It was invisible in the hold benchmark, which measures
+seconds-until-dropped and not hand shape; the free-air posture check
+(posture_benchmark.py) is what exposed it, by scoring the thumb MP against the
+healthy hand and finding the two moving in opposite directions.
 
 Which devices drive the thumb, per their primary sources (an earlier version of
 this file asserted "D1/D2/D3 don't drive the thumb at all -- their papers only
@@ -25,12 +38,20 @@ silently deleted the digit its own paper calls essential):
 
 cmc_abduction was added after discovering (via grasp testing) that flexion
 alone cannot produce genuine thumb OPPOSITION: driving cmc_flexion/mp_flexion/
-ip_flexion only curls the thumb in roughly the same arc as the fingers (their
-fingertip velocity directions were nearly parallel, not opposing), because
+ip_flexion only curls the thumb in roughly the same arc as the fingers, because
 that's what flexion does anatomically -- true opposition is what the thumb's
 saddle joint's ABDUCTION is for. Without it, no amount of "grip force" can
-create a real pincer grasp, which is exactly why the earlier D4 grasp test
-failed: squeezing along non-opposing directions just ejects the object faster.
+create a real pincer grasp.
+
+That conclusion still stands, but the evidence originally cited for it does
+not, and it is worth recording why. The original test compared fingertip
+VELOCITY directions and reported that adding a positive cmc_abduction row
+"flipped the dot product negative", i.e. produced opposition. Velocity
+direction is a poor witness here -- it flips transiently while a tip is
+travelling away from its target. Measuring tip POSITION instead shows the
+opposite: the positive-abduction drive moved the thumb tip 45mm FURTHER from
+the index fingertip and 42mm further from the middle. The sign-corrected drive
+moves it 33mm and 51mm CLOSER. Prefer position over velocity for this question.
 
 tau_max (N*m) is mostly still a placeholder tuned for visible grasp behavior in
 the demo/tests. The "_calibrated" device variants below are the exception:
@@ -121,10 +142,20 @@ MOMENT_ARMS_MM = {
     "mcp3_flexion": 8.457,
     "pm3_flexion": 7.546,
     "md3_flexion": 2.664,
-    "cmc_abduction": 3.856,
+    # SIGNED. The sign is the direction the tendon actually drives the joint,
+    # and it is load-bearing information, not decoration: MyoHand's joint
+    # coordinates do NOT share a "positive = flexion" convention. All twelve
+    # finger joints flex positive; the thumb is mixed, flexing NEGATIVE at
+    # cmc_abduction/mp_flexion/ip_flexion and positive only at cmc_flexion.
+    # compute_moment_arms.py used to return abs(), which made every thumb row
+    # here positive and had every device driving the thumb backwards -- into
+    # extension and hyperabduction -- during what was supposed to be a grasp.
+    # Measured: the all-positive drive moved the thumb tip 45mm AWAY from the
+    # index fingertip; the sign-correct drive moves it 33mm toward it.
+    "cmc_abduction": -3.856,
     "cmc_flexion": 1.492,
-    "mp_flexion": 7.120,
-    "ip_flexion": 8.813,
+    "mp_flexion": -7.120,
+    "ip_flexion": -8.813,
     # Ring/little, from FDP4/FDP5. Added when D1 turned out to be a five-finger
     # device; they also retire the proxy profile D4_v2's shared ulnar channel
     # previously had to borrow from the middle finger. Note the ring finger's
@@ -201,8 +232,8 @@ DEVICES = {
             [0.00, 1.00, 0.00, 0.00, 0.00],
             [0.00, 0.00, 0.00, 0.00, 0.00],  # cmc_abduction: flexion/extension device only
             [0.00, 0.00, 0.00, 0.00, 0.00],  # cmc_flexion: paper's thumb model has no CMC DoF
-            [0.00, 0.00, 0.73, 0.00, 0.00],  # thumb MP (proximal, 4.1 N)
-            [0.00, 0.00, 1.00, 0.00, 0.00],  # thumb IP (distal, 5.6 N)
+            [0.00, 0.00, -0.73, 0.00, 0.00],  # thumb MP (proximal, 4.1 N); negative = flexion, see MOMENT_ARMS_MM
+            [0.00, 0.00, -1.00, 0.00, 0.00],  # thumb IP (distal, 5.6 N)
             [0.00, 0.00, 0.00, 0.73, 0.00],
             [0.00, 0.00, 0.00, 0.93, 0.00],
             [0.00, 0.00, 0.00, 1.00, 0.00],
@@ -297,10 +328,10 @@ DEVICES = {
             [0.00, 0.80, 0.00, 0.00],
             [0.00, 0.90, 0.00, 0.00],
             [0.00, 1.00, 0.00, 0.00],
-            [0.00, 0.00, 0.00, 1.00],  # cmc_abduction: its own opposition motor
+            [0.00, 0.00, 0.00, -1.00],  # cmc_abduction: own opposition motor; negative drives toward the fingers
             [0.00, 0.00, 0.80, 0.00],
-            [0.00, 0.00, 0.90, 0.00],
-            [0.00, 0.00, 1.00, 0.00],
+            [0.00, 0.00, -0.90, 0.00],
+            [0.00, 0.00, -1.00, 0.00],
             [0.00, 0.00, 0.00, 0.00],
             [0.00, 0.00, 0.00, 0.00],
             [0.00, 0.00, 0.00, 0.00],
@@ -327,10 +358,10 @@ DEVICES = {
             [0.00, 0.80, 0.00, 0.00, 0.00],
             [0.00, 0.90, 0.00, 0.00, 0.00],
             [0.00, 1.00, 0.00, 0.00, 0.00],
-            [0.00, 0.00, 0.00, 0.00, 1.00],  # cmc_abduction: its own opposition motor
+            [0.00, 0.00, 0.00, 0.00, -1.00],  # cmc_abduction: own opposition motor; negative drives toward the fingers
             [0.00, 0.00, 0.80, 0.00, 0.00],
-            [0.00, 0.00, 0.90, 0.00, 0.00],
-            [0.00, 0.00, 1.00, 0.00, 0.00],
+            [0.00, 0.00, -0.90, 0.00, 0.00],
+            [0.00, 0.00, -1.00, 0.00, 0.00],
             [0.00, 0.00, 0.00, 0.70, 0.00],
             [0.00, 0.00, 0.00, 0.80, 0.00],
             [0.00, 0.00, 0.00, 0.90, 0.00],
@@ -365,6 +396,26 @@ DEVICES = {
     # are added, so this correction adds capability without rescaling what was
     # already there.
     #
+    # ABLATION (15 seed-matched trials each, box rig, OP pre-shape, median hold):
+    #                        ulnar ON   ulnar OFF
+    #   correct thumb sign     0.66s      1.21s
+    #   backwards thumb sign   0.78s      0.79s
+    #   no thumb at all          --       0.78s
+    # Two things fall out. (a) Getting the thumb SIGN right is worth +54% hold
+    # time (0.79 -> 1.21s), and the backwards thumb was contributing literally
+    # nothing -- 0.79s against 0.78s with no thumb at all, i.e. it was inert
+    # dead weight, not a working digit. (b) Driving the ulnar digits, which is
+    # what the paper's five motors actually do, COSTS more than the thumb gains
+    # (1.21 -> 0.66s). The two effects are of similar size and opposite sign,
+    # which is why the five-finger correction and the sign correction each
+    # looked like they "barely changed anything" when measured one at a time.
+    #
+    # The ulnar penalty should not be read as a verdict on the real device: the
+    # box placement in this rig was searched for D4, a three-digit-contact
+    # device, and never re-searched per device. A placement that suits a
+    # five-digit wrap may simply not be this one. Treat it as a placement
+    # confound until that search is run.
+    #
     # Worth reporting: the paper's headline finding is that its underactuated
     # transmission is DISTAL-biased (MCP 4.1 N < PIP 5.2 N < DIP 5.6 N, "the
     # exoskeleton's force transmission path tends to favor the mid-distal end").
@@ -385,8 +436,8 @@ DEVICES = {
             [0.000, 0.380, 0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.000, 0.000],  # cmc_abduction: flexion/extension device only
             [0.000, 0.000, 0.000, 0.000, 0.000],  # cmc_flexion: paper's thumb model has no CMC DoF
-            [0.000, 0.000, 0.591, 0.000, 0.000],
-            [0.000, 0.000, 1.000, 0.000, 0.000],
+            [0.000, 0.000, -0.591, 0.000, 0.000],
+            [0.000, 0.000, -1.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.727, 0.000],
             [0.000, 0.000, 0.000, 1.000, 0.000],
             [0.000, 0.000, 0.000, 0.348, 0.000],
@@ -441,10 +492,10 @@ DEVICES = {
             [0.000, 1.000, 0.000, 0.000],
             [0.000, 0.892, 0.000, 0.000],
             [0.000, 0.315, 0.000, 0.000],
-            [0.000, 0.000, 0.000, 1.000],  # cmc_abduction: its own opposition motor
+            [0.000, 0.000, 0.000, -1.000],  # cmc_abduction: own opposition motor; negative drives toward the fingers
             [0.000, 0.000, 0.169, 0.000],
-            [0.000, 0.000, 0.808, 0.000],
-            [0.000, 0.000, 1.000, 0.000],
+            [0.000, 0.000, -0.808, 0.000],
+            [0.000, 0.000, -1.000, 0.000],
             [0.000, 0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.000],
@@ -480,10 +531,10 @@ DEVICES = {
             [0.000, 1.000, 0.000, 0.000, 0.000],
             [0.000, 0.892, 0.000, 0.000, 0.000],
             [0.000, 0.315, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 0.000, 0.000, 1.000],  # cmc_abduction: its own opposition motor
+            [0.000, 0.000, 0.000, 0.000, -1.000],  # cmc_abduction: own opposition motor; negative drives toward the fingers
             [0.000, 0.000, 0.169, 0.000, 0.000],
-            [0.000, 0.000, 0.808, 0.000, 0.000],
-            [0.000, 0.000, 1.000, 0.000, 0.000],
+            [0.000, 0.000, -0.808, 0.000, 0.000],
+            [0.000, 0.000, -1.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.921, 0.000],
             [0.000, 0.000, 0.000, 1.000, 0.000],
             [0.000, 0.000, 0.000, 0.323, 0.000],
@@ -538,10 +589,10 @@ DEVICES = {
             [0.000, 1.000, 0.000, 0.000, 0.000, 0.000],
             [0.000, 0.892, 0.000, 0.000, 0.000, 0.000],
             [0.000, 0.315, 0.000, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 0.000, 0.000, 1.000, 0.000],  # cmc_abduction: its own opposition motor
+            [0.000, 0.000, 0.000, 0.000, -1.000, 0.000],  # cmc_abduction: own opposition motor; negative drives toward the fingers
             [0.000, 0.000, 0.169, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 0.808, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 1.000, 0.000, 0.000, 0.000],
+            [0.000, 0.000, -0.808, 0.000, 0.000, 0.000],
+            [0.000, 0.000, -1.000, 0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.921, 0.000, 0.000],
             [0.000, 0.000, 0.000, 1.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.323, 0.000, 0.000],
@@ -590,10 +641,10 @@ DEVICES = {
             [0.000, 1.000, 0.000, 0.000, 0.000, 0.000],
             [0.000, 0.892, 0.000, 0.000, 0.000, 0.000],
             [0.000, 0.315, 0.000, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 0.000, 0.000, 1.000, 0.000],  # cmc_abduction: its own opposition motor
+            [0.000, 0.000, 0.000, 0.000, -1.000, 0.000],  # cmc_abduction: own opposition motor; negative drives toward the fingers
             [0.000, 0.000, 0.169, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 0.808, 0.000, 0.000, 0.000],
-            [0.000, 0.000, 1.000, 0.000, 0.000, 0.000],
+            [0.000, 0.000, -0.808, 0.000, 0.000, 0.000],
+            [0.000, 0.000, -1.000, 0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.921, 0.000, 0.000],
             [0.000, 0.000, 0.000, 1.000, 0.000, 0.000],
             [0.000, 0.000, 0.000, 0.323, 0.000, 0.000],
@@ -720,7 +771,7 @@ DEVICES = {
         #   index  (x0.877): mcp2 63.05 -> 0.954 | pm2 45.15 -> 0.683 | md2 28.51 -> 0.431
         #   middle (x0.432): mcp3 27.39 -> 0.414 | pm3 24.44 -> 0.370 | md3  8.63 -> 0.131
         K=[0.954, 0.683, 0.431, 0.414, 0.370, 0.131,
-           0.000, 0.169, 0.808, 1.000,
+           0.000, 0.169, -0.808, -1.000,
            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         tau_max=[0.06610],  # N*m; = 66.10 N*mm, the thumb-IP torque above
         n_inputs=1,
