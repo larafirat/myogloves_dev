@@ -281,6 +281,16 @@ class GloveDevAdapter(Adapter):
         # actually moves it along world -z.
         if self.pos_override is not None:
             m.body_pos[oid] = np.array(self.pos_override, dtype=float)
+        # Nominal (un-jittered) placement, kept for positioning the support
+        # pillar below. The pillar must NOT follow the jitter: the jitter
+        # models placing the object slightly differently on a FIXED support,
+        # so moving the support with it would cancel out part of the very
+        # randomisation it exists to provide. This was inconsistent -- the
+        # override path re-derived the pillar from the jittered position while
+        # the default path left the authored pillar alone -- which made a
+        # pos_override set to the model's own authored placement produce
+        # measurably different results from not setting it at all.
+        nominal_pos = m.body_pos[oid].copy()
         # Trial randomisation: jitter the object's resting placement.
         m.body_pos[oid] = m.body_pos[oid] + rng.uniform(-POS_JITTER_M, POS_JITTER_M, 3)
 
@@ -303,11 +313,11 @@ class GloveDevAdapter(Adapter):
         self.thumb = m.actuator("EXO_THUMB").id
         self.pillar_mocap = m.body("glove_dev_support_pillar").mocapid[0]
         if self.pos_override is not None:
-            top = float(m.body_pos[oid][2]) + self.bottom_offset
+            top = float(nominal_pos[2]) + self.bottom_offset
             half = top / 2.0
             m.geom_size[m.geom("glove_dev_support_pillar_geom").id] = [0.08, 0.08, half]
-            d.mocap_pos[self.pillar_mocap] = [float(m.body_pos[oid][0]),
-                                              float(m.body_pos[oid][1]), half]
+            d.mocap_pos[self.pillar_mocap] = [float(nominal_pos[0]),
+                                              float(nominal_pos[1]), half]
         self.obj_geoms = [i for i in range(m.ngeom) if m.geom_bodyid[i] == oid]
         self.digit_ids = {
             dig: {m.body(b).id for b in bs if _has_body(m, b)}
@@ -816,6 +826,21 @@ def main():
     trials = 3 if a.mode == "pilot" else a.trials
 
     if a.mode == "placesweep":
+        # WARNING -- ranking by hold_median alone is a TRAP, and it has already
+        # produced a wrong answer once. hold_median is conditioned on having
+        # grasped at all (summarise() takes the median over grasped trials
+        # only), so a placement that fails most trials but holds well in the
+        # few it happens to win scores HIGHER than one that grasps reliably.
+        #
+        # Concretely: a 3x3x3 screen over all five devices unanimously ranked
+        # (0.09, 0.10, 0.22) first. Re-tested at 15 trials it was clearly worse
+        # -- grasp rate fell from 93-100% to 40-80%, and the healthy
+        # feasibility control collapsed from 2.06s to 0.21s, i.e. a placement
+        # where an unimpaired hand can barely hold the object at all. The
+        # authored (0.07, 0.10, 0.22) survived and is still the one in use.
+        #
+        # Read grasp_rate first, and always re-check a winner against the
+        # healthy control before adopting it.
         import itertools
         ad = pool[names[0]]
         xs = [float(v) for v in a.xs.split(",")]
