@@ -1,8 +1,9 @@
 """Applies exoskeleton coupling-matrix torques (tau_exo = K @ u) to MyoHand.
 
-Joint order (index + middle + thumb, 10 DoF):
+Joint order (index + middle + thumb + ring + little, 16 DoF):
     index MCP, index PIP, index DIP, middle MCP, middle PIP, middle DIP,
-    thumb CMC abduction, thumb CMC flexion, thumb MP flexion, thumb IP flexion
+    thumb CMC abduction, thumb CMC flexion, thumb MP flexion, thumb IP flexion,
+    ring MCP, ring PIP, ring DIP, little MCP, little PIP, little DIP
 Positive torque = flexion (or abduction, for cmc_abduction) assistance.
 D1/D2/D3 don't drive the thumb at all (their papers only ever published
 index+middle data) -- their K rows for the four thumb DoFs are all zero.
@@ -43,6 +44,25 @@ JOINT_NAMES = [
     "mcp5_flexion",    # little MCP
     "pm5_flexion",     # little PIP
     "md5_flexion",     # little DIP
+    "extra_thumb",     # Gerez et al. 2020's actual "telescopic extra thumb" -- confirmed via the primary
+                       # source PDF to be a SEPARATE, pneumatically-inflated 6th-digit-like appendage
+                       # mounted near the palm (Table 1: 80mm long, 10mm thick, 18g; its own dedicated
+                       # air pump), NOT an extension of the anatomical thumb -- an earlier attempt here
+                       # wrongly modeled it as a thumb-tip telescoping joint before the actual paper was
+                       # available. See myohand_body.xml's extra_thumb joint (mounted on capitate, a
+                       # stable central palm bone) for the corrected physical structure. Zero for every
+                       # device below except the ones that explicitly add this channel (see
+                       # D4_v2_extra_thumb_calibrated) -- it is not part of any existing device's thumb
+                       # column; the source paper drives it from its own independent motor/pump.
+    "extra_thumb_v2",  # Second mounting/axis for the same real device feature -- v1 (mounted on
+                       # capitate, aimed at the closed-fist fingertip-convergence point) looked visually
+                       # disconnected from the glove (shoots out sideways from the wrist), nothing like
+                       # the paper's own Fig. 3 photo. v2 is mounted on trapezium (the thumb's own carpal
+                       # bone, closer to where the photo shows it attaching) and aimed at the OPEN-hand
+                       # fingertip position instead, so it extends forward roughly alongside the fingers
+                       # like the photo shows, not into the eventual fist-closure point. Kept as a
+                       # SEPARATE device (D4_v2_extra_thumb_v2_calibrated) rather than replacing v1, so
+                       # both mounting choices stay comparable.
 ]
 
 PASSIVE_COUPLED_JOINTS = [
@@ -100,7 +120,7 @@ MOMENT_ARMS_MM = {
 
 class ExoDevice:
     def __init__(self, name, K, tau_max, n_inputs, tau_max_is_calibrated=False,
-                 passive_coupling=True):
+                 passive_coupling=True, controller_overrides=None):
         self.name = name
         self.n_inputs = n_inputs
         self.K = np.asarray(K, dtype=float).reshape(len(JOINT_NAMES), n_inputs)
@@ -109,6 +129,7 @@ class ExoDevice:
         # calibrated variant) rather than tuned by hand for visible demo behavior.
         self.tau_max_is_calibrated = tau_max_is_calibrated
         self.passive_coupling = passive_coupling
+        self.controller_overrides = dict(controller_overrides or {})
 
     def torque(self, u):
         """u: array-like of length n_inputs, each in [0, 1]. Returns per-joint torques."""
@@ -132,7 +153,7 @@ DEVICES = {
     # a simplification, not something the paper itself reports.
     "D1_underactuated_distal": ExoDevice(
         name="D1_underactuated_distal",
-        K=[0.73, 0.93, 1.00, 0.73, 0.93, 1.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        K=[0.73, 0.93, 1.00, 0.73, 0.93, 1.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  # no thumb telescope or v2 either
         tau_max=[1.0],  # placeholder; see D1_underactuated_distal_calibrated for the real-torque version
         n_inputs=1,
     ),
@@ -151,7 +172,7 @@ DEVICES = {
     # the "_calibrated" variant below corrects for.
     "D2_synergy_cross_finger": ExoDevice(
         name="D2_synergy_cross_finger",
-        K=[0.85, 0.95, 1.00, 0.4184, 0.4677, 0.4922, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        K=[0.85, 0.95, 1.00, 0.4184, 0.4677, 0.4922, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  # no thumb telescope or v2 either
         tau_max=[1.0],  # placeholder; see fingertip-force ambiguity note below
         n_inputs=1,
     ),
@@ -171,7 +192,7 @@ DEVICES = {
     # coupling strength, not a first-principles one.
     "D3_uniform_single_dof": ExoDevice(
         name="D3_uniform_single_dof",
-        K=[0.65, 1.00, 0.9375, 0.65, 1.00, 0.9375, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        K=[0.65, 1.00, 0.9375, 0.65, 1.00, 0.9375, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  # no thumb telescope or v2 either
         tau_max=[1.0],  # placeholder; no published force data to calibrate against (see comment above)
         n_inputs=1,
     ),
@@ -213,6 +234,8 @@ DEVICES = {
             [0.00, 0.00, 0.00],
             [0.00, 0.00, 0.00],
             [0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00],  # extra_thumb: this device has no extra thumb channel
+            [0.00, 0.00, 0.00],  # extra_thumb_v2: this device has no extra thumb channel
         ],
         tau_max=[1.0, 1.0, 1.0],  # placeholder; real device has a 500 N tendon rating (safety/material limit,
         n_inputs=3,                # not a typical operating torque) -- see the _calibrated variant for the real value
@@ -241,6 +264,8 @@ DEVICES = {
             [0.00, 0.00, 0.00, 0.46],
             [0.00, 0.00, 0.00, 0.56],
             [0.00, 0.00, 0.00, 0.66],
+            [0.00, 0.00, 0.00, 0.00],  # extra_thumb: this device has no extra thumb channel
+            [0.00, 0.00, 0.00, 0.00],  # extra_thumb_v2: this device has no extra thumb channel
         ],
         tau_max=[1.0, 1.0, 1.0, 1.0],
         n_inputs=4,
@@ -258,7 +283,7 @@ DEVICES = {
     #   middle: 4.1*8.457=34.67 -> 0.883 | 5.2*7.546=39.24 -> 0.999 | 5.6*2.664=14.92 -> 0.380
     "D1_underactuated_distal_calibrated": ExoDevice(
         name="D1_underactuated_distal_calibrated",
-        K=[1.000, 0.908, 0.618, 0.883, 0.999, 0.380, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        K=[1.000, 0.908, 0.618, 0.883, 0.999, 0.380, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  # no thumb telescope or v2 either
         tau_max=[0.03929],  # N*m; = 39.29 N*mm, the index-MCP torque above -- not a placeholder
         n_inputs=1,
         tau_max_is_calibrated=True,
@@ -306,6 +331,8 @@ DEVICES = {
             [0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000],
             [0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000],  # extra_thumb: this device has no extra thumb channel (see D4_v2_extra_thumb_calibrated)
+            [0.000, 0.000, 0.000],  # extra_thumb_v2: this device has no extra thumb channel
         ],
         tau_max=[0.13225, 0.11671, 0.12162],  # N*m; not a placeholder -- see derivation above
         n_inputs=3,
@@ -337,33 +364,251 @@ DEVICES = {
             [0.000, 0.000, 0.000, 0.575],
             [0.000, 0.000, 0.000, 0.512],
             [0.000, 0.000, 0.000, 0.181],
+            [0.000, 0.000, 0.000, 0.000],  # extra_thumb: this device has no extra thumb channel
+            [0.000, 0.000, 0.000, 0.000],  # extra_thumb_v2: this device has no extra thumb channel
         ],
         tau_max=[0.13225, 0.11671, 0.12162, 0.11671],
         n_inputs=4,
         tau_max_is_calibrated=True,
         passive_coupling=False,
+        controller_overrides={
+            "mcp_scale": 0.78,
+            "pip_lead": 0.05,
+            "pip_full": 0.28,
+            "dip_lead": 0.18,
+            "dip_full": 0.50,
+            "abduct_lead": 0.24,
+            "abduct_full": 0.68,
+            # Default ramp_seconds=1.5 reached the object at u~0.83 (83% of
+            # D4_v2's real calibrated torque) -- measured peak object speed
+            # right after first contact was 0.0225 m/s, a real jolt, not a
+            # gentle touch. Slowing the ramp to 4.0s drops contact-time u to
+            # ~0.40 and post-contact object speed to 0.0053 m/s (4x gentler)
+            # while barely changing when contact happens (contact timing is
+            # dominated by joint kinematics reaching the object, not ramp
+            # rate) and, if anything, slightly IMPROVES sustained touch
+            # duration (can_cylinder: 2.0s -> 2.5s) -- verified across all
+            # three OBJECT_VARIANTS in run_grasp_baseline.py before locking in.
+            "ramp_seconds": 4.0,
+        },
     ),
-    # D2/D3 have no published force data at all (design-intent only), so there is
-    # nothing to correct via F*r like D1/D4. What we CAN check: both are described
-    # as a single continuous tendon crossing all three joints under one motor/tension
-    # (D2: fingertip-anchored synergy; D3: single-DOF cable) -- the same physical
-    # setup as D4's per-finger tendon. Under uniform tension, real torque ratio IS
-    # the moment-arm ratio, so this is the same MOMENT_ARMS_MM profile as D4's,
-    # just combined into ONE shared input (both fingers, single u) instead of two.
-    # Because neither reports per-joint forces, D2 and D3 collapse to an IDENTICAL
-    # calibrated K -- itself worth flagging: absent that data, this pipeline cannot
-    # physically distinguish D2's "flat" claim from D3's "uniform" claim.
+    # D4_v2 + the paper's actual extra thumb, as its own independent 5th channel
+    # (own dedicated pneumatic pump in the source device, per Sec. III: "another
+    # soft actuator was designed to act as a telescopic extra thumb" -- separate
+    # from the "index, middle, and thumb tendons... connected to dedicated
+    # pulleys of individual motors" driving channels 0-2). Channels 0-3 (index/
+    # middle/thumb/ring+pinky) are byte-for-byte the same as D4_v2 calibrated
+    # above; channel 4 is new. tau_max=15.8N reuses the paper's OWN measured
+    # "Maximum abduction force" (Sec. V-A) as the closest available real force
+    # number for a pneumatic actuator in this same device family -- the paper
+    # doesn't report a blocked/max force specifically for the extra thumb
+    # actuator itself, so this is an explicit proxy, not a direct measurement.
+    "D4_v2_extra_thumb_calibrated": ExoDevice(
+        name="D4_v2_extra_thumb_calibrated",
+        K=[
+            [1.000, 0.000, 0.000, 0.000, 0.000],
+            [0.716, 0.000, 0.000, 0.000, 0.000],
+            [0.452, 0.000, 0.000, 0.000, 0.000],
+            [0.000, 1.000, 0.000, 0.000, 0.000],
+            [0.000, 0.892, 0.000, 0.000, 0.000],
+            [0.000, 0.315, 0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.438, 0.000, 0.000],
+            [0.000, 0.000, 0.169, 0.000, 0.000],
+            [0.000, 0.000, 0.808, 0.000, 0.000],
+            [0.000, 0.000, 1.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000, 0.883, 0.000],
+            [0.000, 0.000, 0.000, 0.787, 0.000],
+            [0.000, 0.000, 0.000, 0.278, 0.000],
+            [0.000, 0.000, 0.000, 0.575, 0.000],
+            [0.000, 0.000, 0.000, 0.512, 0.000],
+            [0.000, 0.000, 0.000, 0.181, 0.000],
+            [0.000, 0.000, 0.000, 0.000, 1.000],  # extra_thumb: its own channel, own actuator
+            [0.000, 0.000, 0.000, 0.000, 0.000],  # extra_thumb_v2: not this device (see D4_v2_extra_thumb_v2_calibrated)
+        ],
+        tau_max=[0.13225, 0.11671, 0.12162, 0.11671, 15.8],
+        n_inputs=5,
+        tau_max_is_calibrated=True,
+        passive_coupling=False,
+        controller_overrides={
+            "mcp_scale": 0.78,
+            "pip_lead": 0.05,
+            "pip_full": 0.28,
+            "dip_lead": 0.18,
+            "dip_full": 0.50,
+            "abduct_lead": 0.24,
+            "abduct_full": 0.68,
+            "ramp_seconds": 4.0,
+            # TRIED AND REVERTED: marking extra_thumb (channel 4) pneumatic -- matching the
+            # source device's actual control law (held at a fixed commanded pressure, 20kPa,
+            # Table 1, rather than easing off on contact like the tendon digits) -- is more
+            # paper-faithful, but measured WORSE (rotation onset 20.9-37.9deg at 0.2s vs
+            # 13.7deg with plain ease-off). Sustained full force through this still-marginal
+            # contact amplifies the torque imbalance rather than resisting it; see
+            # grasp_controller.py's pneumatic_channels mechanism, which still exists and is
+            # correctly implemented, just not beneficial for THIS contact's current quality.
+        },
+    ),
+    # Same device as D4_v2_extra_thumb_calibrated, but driving extra_thumb_v2 (the
+    # trapezium-mounted, forward-pointing redesign) instead of extra_thumb (the
+    # capitate-mounted, sideways-looking original) -- kept as a genuinely separate
+    # device so both mounting choices stay directly comparable rather than
+    # overwriting one another. Everything else (index/middle/thumb/ring+pinky
+    # channels, force numbers) is identical.
+    "D4_v2_extra_thumb_v2_calibrated": ExoDevice(
+        name="D4_v2_extra_thumb_v2_calibrated",
+        K=[
+            [1.000, 0.000, 0.000, 0.000, 0.000],
+            [0.716, 0.000, 0.000, 0.000, 0.000],
+            [0.452, 0.000, 0.000, 0.000, 0.000],
+            [0.000, 1.000, 0.000, 0.000, 0.000],
+            [0.000, 0.892, 0.000, 0.000, 0.000],
+            [0.000, 0.315, 0.000, 0.000, 0.000],
+            [0.000, 0.000, 0.438, 0.000, 0.000],
+            [0.000, 0.000, 0.169, 0.000, 0.000],
+            [0.000, 0.000, 0.808, 0.000, 0.000],
+            [0.000, 0.000, 1.000, 0.000, 0.000],
+            [0.000, 0.000, 0.000, 0.883, 0.000],
+            [0.000, 0.000, 0.000, 0.787, 0.000],
+            [0.000, 0.000, 0.000, 0.278, 0.000],
+            [0.000, 0.000, 0.000, 0.575, 0.000],
+            [0.000, 0.000, 0.000, 0.512, 0.000],
+            [0.000, 0.000, 0.000, 0.181, 0.000],
+            [0.000, 0.000, 0.000, 0.000, 0.000],  # extra_thumb: not this device
+            [0.000, 0.000, 0.000, 0.000, 1.000],  # extra_thumb_v2: its own channel, own actuator
+        ],
+        tau_max=[0.13225, 0.11671, 0.12162, 0.11671, 15.8],
+        n_inputs=5,
+        tau_max_is_calibrated=True,
+        passive_coupling=False,
+        controller_overrides={
+            "mcp_scale": 0.78,
+            "pip_lead": 0.05,
+            "pip_full": 0.28,
+            "dip_lead": 0.18,
+            "dip_full": 0.50,
+            "abduct_lead": 0.24,
+            "abduct_full": 0.68,
+            "ramp_seconds": 4.0,
+        },
+    ),
+    # Paper-like thumb variant for D4_v2, kept separate from the working v2 model:
+    # the paper emphasizes thumb opposition rather than a hitchhiker-like,
+    # hyper-abducted thumb posture. In this MyoHand model, the thumb's inward
+    # grasping direction is reached by NEGATIVE cmc_abduction / mp / ip motion,
+    # while cmc_flexion stays positive. This branch therefore uses a somewhat
+    # wider abduction-first approach, then folds inward with moderated MP/IP
+    # curl so the thumb comes in from the side rather than hitchhiking upward.
+    # This is still a modeling assumption, not a published per-joint force table
+    # from Gerez et al. 2020, so it lives under a distinct name.
+    "D4_v2_paper_like_thumb_calibrated": ExoDevice(
+        name="D4_v2_paper_like_thumb_calibrated",
+        K=[
+            [1.000, 0.000, 0.000, 0.000],
+            [0.716, 0.000, 0.000, 0.000],
+            [0.452, 0.000, 0.000, 0.000],
+            [0.000, 1.000, 0.000, 0.000],
+            [0.000, 0.892, 0.000, 0.000],
+            [0.000, 0.315, 0.000, 0.000],
+            [0.000, 0.000, -0.660, 0.000],
+            [0.000, 0.000, 0.360, 0.000],
+            [0.000, 0.000, -0.500, 0.000],
+            [0.000, 0.000, -0.240, 0.000],
+            [0.000, 0.000, 0.000, 0.883],
+            [0.000, 0.000, 0.000, 0.787],
+            [0.000, 0.000, 0.000, 0.278],
+            [0.000, 0.000, 0.000, 0.575],
+            [0.000, 0.000, 0.000, 0.512],
+            [0.000, 0.000, 0.000, 0.181],
+            [0.000, 0.000, 0.000, 0.000],  # extra_thumb: this device has no extra thumb channel
+            [0.000, 0.000, 0.000, 0.000],  # extra_thumb_v2: this device has no extra thumb channel
+        ],
+        tau_max=[0.13225, 0.11671, 0.12162, 0.11671],
+        n_inputs=4,
+        tau_max_is_calibrated=True,
+        passive_coupling=False,
+        controller_overrides={
+            "abduct_lead": 0.14,
+            "abduct_full": 0.42,
+            "hold_fraction": 0.16,
+            "slip_gain": 0.010,
+        },
+    ),
+    # D2 and D3 are now distinguished from their PRIMARY SOURCES. An earlier
+    # version of this block asserted that "neither reports per-joint forces,
+    # [so] D2 and D3 collapse to an IDENTICAL calibrated K". That was wrong on
+    # the facts -- both papers publish enough to separate them, and the
+    # collapse silently made two different devices numerically identical (same
+    # K, same tau_max, same torques), which is how they came to produce
+    # bit-identical benchmark results.
+    #
+    # D2 -- Alicea, Xiloyannis, Chiaradia, Barsotti, Frisoli & Masia, "A soft,
+    # synergy-based robotic glove for grasping assistance," Wearable
+    # Technologies 2(e4), 2021.
+    #   * THREE digits are actively driven, not two: "Only three digits are
+    #     actively supported, these being the thumb, index, and middle
+    #     fingers" (Glove Design). The previous definition zeroed every thumb
+    #     row, which removed the digit the paper calls essential -- "The
+    #     support of the thumb is required, given its unique anatomy and
+    #     fundamental role in all grasps that require opposition."
+    #   * Cross-finger ratio comes from the synergy pulley's channel
+    #     diameters, 2.2 / 0.95 / 1.93 cm for thumb / middle / index
+    #     (Figure 3b and its caption). One shaft, so tendon stroke -- and
+    #     hence delivered drive -- scales with channel diameter:
+    #     thumb 1.000, index 0.877, middle 0.432. This IS the postural synergy
+    #     the device is built around, and it is what makes D2 "cross-finger".
+    #   * Fingertip force 7.5 N ("measured forces delivered by the device
+    #     reached up to 7:5N at finger level and up to 15N at palm level").
+    #     Table 3 lists 15 N for "This design"; the body text shows that is the
+    #     palm-level figure, so the finger-level 7.5 N is used here.
+    #   * cmc_abduction stays 0: the thumb is driven by a single tendon
+    #     anchored at its dorsal tip and routed along the palmar side, which
+    #     crosses the FLEXION joints. No abduction actuator is described.
+    #     So this device gets thumb flexion but no independent opposition.
+    #
+    # D3 -- Thimabut, Terachinda & Kitisomprayoonkul, Rehabilitation Research
+    # and Practice 2022, Art. 3738219.
+    #   * TWO digits only: "The glove is a two-fingered design covering the
+    #     index and middle fingers." The thumb is not actuated at all -- it is
+    #     immobilised by a C-bar splint at 50 deg MCP flexion, plus a latex
+    #     glove for friction. Thumb rows are correctly zero.
+    #   * Genuinely UNIFORM across fingers: one hoist-and-cable motor, 1 DOF,
+    #     driving index and middle identically. That is the actual content of
+    #     this device's "uniform_single_dof" name, and it contrasts with D2's
+    #     deliberately unequal synergy ratios.
+    #   * Grip force 12-28 N at the fingertips; the 20 N midpoint is used.
+    #
+    # Within-finger split for both is the MOMENT_ARMS_MM profile (one
+    # continuous tendon under uniform tension across a finger's joints, so
+    # torque ratio is the moment-arm ratio) -- same derivation as D1/D4,
+    # tau_j = F_j * r_j.
+    #
+    # MODELLING GAP worth stating: D3's real-world opposition comes from that
+    # rigid splinted thumb acting as a post. Nothing in this model splints the
+    # thumb, so D3 as simulated has no opposing surface at all and cannot form
+    # a pinch on its own. Any D3 result here should be read with that in mind.
     "D2_synergy_cross_finger_calibrated": ExoDevice(
         name="D2_synergy_cross_finger_calibrated",
-        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        tau_max=[1.0],  # placeholder; no force data exists to derive a real scale for D2
+        # tau_j = 7.5 N * r_j * pulley_scale; normalised by ip_flexion (66.10 N*mm).
+        #   thumb  (x1.000): cmc_flex 11.19 -> 0.169 | mp 53.40 -> 0.808 | ip 66.10 -> 1.000
+        #   index  (x0.877): mcp2 63.05 -> 0.954 | pm2 45.15 -> 0.683 | md2 28.51 -> 0.431
+        #   middle (x0.432): mcp3 27.39 -> 0.414 | pm3 24.44 -> 0.370 | md3  8.63 -> 0.131
+        K=[0.954, 0.683, 0.431, 0.414, 0.370, 0.131,
+           0.000, 0.169, 0.808, 1.000,
+           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        tau_max=[0.06610],  # N*m; = 66.10 N*mm, the thumb-IP torque above
         n_inputs=1,
+        tau_max_is_calibrated=True,
     ),
     "D3_uniform_single_dof_calibrated": ExoDevice(
         name="D3_uniform_single_dof_calibrated",
-        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        tau_max=[1.0],  # placeholder; no force data exists to derive a real scale for D3
+        # tau_j = 20 N * r_j (uniform across both fingers); normalised by
+        # index-MCP (191.66 N*mm). Thumb rows zero -- splinted, not actuated.
+        K=[1.000, 0.716, 0.452, 0.883, 0.787, 0.278,
+           0.0, 0.0, 0.0, 0.0,
+           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        tau_max=[0.19166],  # N*m; = 191.66 N*mm, the index-MCP torque above
         n_inputs=1,
+        tau_max_is_calibrated=True,
     ),
 }
 
@@ -376,7 +621,7 @@ class ExoApplicator:
         self.passive_dof_adr = [model.joint(name).dofadr[0] for name in PASSIVE_COUPLED_JOINTS]
 
     def apply(self, data, device, u, row_gate=None):
-        """row_gate: optional (10,) per-joint-row multiplier applied AFTER
+        """row_gate: optional per-joint-row multiplier applied AFTER
         K/tau_max (see GraspController's thumb sequencing) -- a controller-
         level recruitment-order reflex, not part of the device's own
         literature-derived torque profile, so it's opt-in and defaults to
