@@ -790,6 +790,34 @@ DEVICES = {
     ),
 }
 
+# --- D4 recruitment-order variant -------------------------------------------
+# THE SAME PHYSICAL DEVICE as D4_v2_hybrid_per_finger_calibrated. Identical K,
+# identical tau_max -- built from that device's own arrays rather than copied,
+# so "only the controller differs" is structurally true and cannot drift.
+#
+# What differs is WHEN the thumb's flexion motor is allowed in relative to its
+# opposition motor. posture_benchmark.py found that under the shipped timing
+# (abduct_lead 0.24) D4's thumb ends up abducted the WRONG way, +28.5 deg
+# against a healthy reference of -16.7: opposition leads correctly at first,
+# then thumb flexion arrives with roughly twice the torque and drags the CMC
+# saddle joint the other way. Delaying flexion (abduct_lead 0.40) fixes the
+# direction but costs MP flexion range.
+#
+# Both are kept as separate devices rather than one being chosen, because the
+# trade is real and runs in opposite directions on the two benchmarks -- grip
+# force versus posture fidelity. See the comparison in posture_benchmark.py.
+DEVICES["D4_v2_opposition_first_calibrated"] = ExoDevice(
+    name="D4_v2_opposition_first_calibrated",
+    K=DEVICES["D4_v2_hybrid_per_finger_calibrated"].K.flatten(),
+    tau_max=DEVICES["D4_v2_hybrid_per_finger_calibrated"].tau_max.copy(),
+    n_inputs=DEVICES["D4_v2_hybrid_per_finger_calibrated"].n_inputs,
+    tau_max_is_calibrated=True,
+    passive_coupling=False,
+    controller_overrides=dict(
+        DEVICES["D4_v2_hybrid_per_finger_calibrated"].controller_overrides,
+        abduct_lead=0.40, abduct_full=0.80),
+)
+
 
 class ExoApplicator:
     """Injects a device's joint torques into MjData via qfrc_applied each step."""

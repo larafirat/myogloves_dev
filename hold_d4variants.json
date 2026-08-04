@@ -1,0 +1,32 @@
+{
+  "portOP_D4_v2_hybrid_per_finger_calibrated": {
+    "n": 15,
+    "grasp_rate": 0.9333333333333333,
+    "setup_fail": 0,
+    "survival_rate": 0.0,
+    "no_grasp": 1,
+    "slipped": 14,
+    "survived": 0,
+    "censored": 0,
+    "hold_mean": 0.9524285714285714,
+    "hold_median": 1.014,
+    "hold_sd": 0.14644963129176705,
+    "preshape": "native OP at 0.5",
+    "drive": "own_controller"
+  },
+  "portOP_D4_v2_opposition_first_calibrated": {
+    "n": 15,
+    "grasp_rate": 0.9333333333333333,
+    "setup_fail": 0,
+    "survival_rate": 0.0,
+    "no_grasp": 1,
+    "slipped": 14,
+    "survived": 0,
+    "censored": 0,
+    "hold_mean": 0.9002857142857144,
+    "hold_median": 0.9450000000000001,
+    "hold_sd": 0.1472786101611127,
+    "preshape": "native OP at 0.5",
+    "drive": "own_controller"
+  }
+}

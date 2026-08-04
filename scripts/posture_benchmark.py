@@ -73,9 +73,31 @@ Two metrics, because they answer different questions.
    flexion gates in before abduction has won the joint.
 
    Raising abduct_lead 0.24 -> 0.40 flips the sign, at the cost of MP flexion
-   (-38.5 -> -28.1 deg). That is a real trade between posture fidelity and grip
-   force, so it is left as a decision rather than silently retuned -- changing
-   it moves every hold number in the repo.
+   (-38.5 -> -28.1 deg). Both timings are kept as separate devices
+   (D4_v2_hybrid_per_finger_calibrated and D4_v2_opposition_first_calibrated)
+   and both were measured on both benchmarks. RESOLUTION -- it is not a trade,
+   it is CONDITIONAL on who supplies the opposition:
+
+     device must oppose for itself (no OP pre-shape)
+       shipped timing      fidelity 60.3%   grasp 53.3%   hold 0.14s
+       opposition-first    fidelity 72.3%   grasp 60.0%   hold 0.15s
+     opposition borrowed from the OP muscle
+       shipped timing      fidelity 68.3%                 hold 1.01s
+       opposition-first    fidelity 65.8%                 hold 0.95s
+
+   Standing on its own the opposition-first timing is better on every axis at
+   once -- +12 points of posture fidelity, +6.7pp grasp rate, hold unchanged.
+   There is nothing to trade away. With the OP pre-shape it is mildly worse on
+   both, and the reason is mechanical rather than a tuning accident: OP already
+   drives cmc_abduction to its joint LIMIT (settled -32.2 deg against a -28.6
+   deg range floor), so there is no abduction left for the device's own
+   opposition motor to contribute. Delaying thumb flexion then buys nothing and
+   only costs MP range.
+
+   So the honest reading is that the shipped timing is not tuned for the
+   device, it is tuned for the pre-shape propping it up. Which is the same
+   finding this project keeps arriving at from different directions: the OP
+   assumption dominates, and it masks what the devices themselves do.
 
    Note the asymmetry this exposes between the two benchmarks: the hold
    benchmark cannot see any of this, because a thumb abducting the wrong way
@@ -142,6 +164,80 @@ MIN_REF_EXCURSION_DEG = 15.0
 
 def scorable(ref_excursion):
     return abs(ref_excursion) >= MIN_REF_EXCURSION_DEG
+
+
+# A device that does not drive a joint at all and a device that drives it badly
+# are different failures, and averaging them into one number hides both. D3 is
+# the case that forces the issue: it is a two-finger device whose thumb is
+# deliberately splinted, so scoring its motionless thumb against a healthy
+# moving one reads as poor fidelity when it is actually a design choice, and
+# dragged its mean to 29.6% -- last place, for doing exactly what it should.
+#
+# So each device is reported as two numbers over the scorable joints:
+#   COVERAGE  how many it drives at all           (breadth of the design)
+#   FIDELITY  how naturally it moves THOSE        (quality where it acts)
+# Neither alone is a verdict: full coverage with poor fidelity is a glove that
+# moves everything wrongly, and high fidelity on two joints is a pinch aid.
+MIN_LEVERAGE_MM = 0.5   # tendon moment arm below this is numerical, not drive
+
+
+def driven_joints(model, adapter):
+    """Joint names this device actually actuates, and how it knows.
+
+    Two device families need two answers, and neither can be guessed from the
+    resulting motion (that would be circular -- the motion is what is being
+    scored):
+
+      K-matrix devices (D1-D4)  a joint is driven if its K row is non-zero for
+                                some channel. This is the device's own
+                                declaration of what it drives.
+      Tyrone's glove            it has no K matrix, it has real routed tendons.
+                                A joint is driven if one of the exo tendons has
+                                meaningful leverage over it, measured the same
+                                way MOMENT_ARMS_MM was. Result: index and
+                                middle in full, plus cmc_abduction and
+                                mp_flexion -- 9 of 16. Notably its abduction
+                                moment arm is 13.7 mm, roughly 4x the FPL's
+                                3.9 mm, so the design is weighted hard toward
+                                thumb opposition. It does not drive cmc_flexion
+                                (0.06 mm), ip_flexion, or the ulnar digits.
+
+    Splinted joints are returned separately: they are neither driven nor
+    ignored, they are deliberately immobilised, and they belong in neither
+    average.
+    """
+    from exo_devices import JOINT_NAMES
+
+    splinted = set()
+    if hasattr(adapter, "SPLINT_POSE"):
+        splinted = set(adapter.SPLINT_POSE)
+
+    device = getattr(adapter, "device", None)
+    if device is not None:
+        driven = {j for row, j in enumerate(JOINT_NAMES)
+                  if np.any(device.K[row, :] != 0.0)}
+        return driven - splinted, splinted
+
+    driven = set()
+    data = mujoco.MjData(model)
+    for tname in ("exo_flex_tendon", "exo_thumb_tendon", "exo_ext_tendon"):
+        try:
+            tid = model.tendon(tname).id
+        except KeyError:
+            continue
+        for jname in JOINT_NAMES:
+            try:
+                qadr = model.joint(jname).qposadr[0]
+            except KeyError:
+                continue
+            mujoco.mj_resetData(model, data)
+            mujoco.mj_forward(model, data)
+            l0 = data.ten_length[tid]
+            data.qpos[qadr] += 1e-4
+            mujoco.mj_forward(model, data)
+            if abs((data.ten_length[tid] - l0) / 1e-4 * 1000.0) > MIN_LEVERAGE_MM:
+                driven.add(jname)
+    return driven - splinted, splinted
 
 
 def similarity(dev_excursion, ref_excursion):
@@ -375,33 +471,82 @@ def main():
             continue
 
         if a.mode == "rom":
+            probe_m, _ = ad.build(np.random.default_rng(0))
+            driven, splinted = driven_joints(probe_m, ad)
+
             sim = {j: similarity(res[j], ref[j]) for j in res}
             mat = {j: match(res[j], ref[j]) for j in res}
-            scored = [v for v in mat.values() if v == v]
-            agg = float(np.mean(scored)) if scored else float("nan")
-            print(f"\n{ad.name}  ({n}/{a.trials} usable)   "
-                  f"mean MATCH over {len(scored)} scored joints = {agg:.1f}%")
-            print(f"  {'joint':<10}{'excursion':>12}  {'Eq.1':>8}  {'match':>7}")
+            scorable_joints = [j for j in res if mat[j] == mat[j]]
+            on_driven = [mat[j] for j in scorable_joints if j in driven]
+            coverage = (100.0 * len([j for j in scorable_joints if j in driven])
+                        / len(scorable_joints)) if scorable_joints else float("nan")
+            fidelity = float(np.mean(on_driven)) if on_driven else float("nan")
+
+            print(f"\n{ad.name}  ({n}/{a.trials} usable)")
+            print(f"  COVERAGE {coverage:5.1f}%  ({len(on_driven)} of "
+                  f"{len(scorable_joints)} scorable joints driven)"
+                  + (f", {len(splinted)} splinted" if splinted else ""))
+            print(f"  FIDELITY {fidelity:5.1f}%  (mean match on the joints it drives)")
+            print(f"  {'joint':<10}{'excursion':>12}  {'Eq.1':>8}  {'match':>7}  role")
             for dig, lbl, j in ALL_JOINTS:
                 if j not in res:
                     continue
                 s = f"{sim[j]:7.1f}%" if sim[j] == sim[j] else "      --"
                 mm = f"{mat[j]:6.1f}%" if mat[j] == mat[j] else "     --"
-                print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg  {s}  {mm}")
-            out["devices"][ad.name] = {"usable": n, "excursion_deg": res,
-                                       "similarity_pct": sim, "match_pct": mat,
-                                       "mean_match_pct": agg if agg == agg else None}
+                role = ("splinted" if j in splinted else
+                        "driven" if j in driven else "not driven")
+                print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg  {s}  {mm}  {role}")
+            out["devices"][ad.name] = {
+                "usable": n, "excursion_deg": res, "similarity_pct": sim,
+                "match_pct": mat, "driven": sorted(driven), "splinted": sorted(splinted),
+                "coverage_pct": coverage if coverage == coverage else None,
+                "fidelity_pct": fidelity if fidelity == fidelity else None}
         else:
+            probe_m, _ = ad.build(np.random.default_rng(0))
+            driven, splinted = driven_joints(probe_m, ad)
             err = {j: res[j] - ref[j] for j in res}
-            rms = float(np.sqrt(np.mean([e ** 2 for e in err.values()])))
-            print(f"\n{ad.name}  ({n}/{a.trials} usable)   RMS posture error = {rms:.1f} deg")
+            rms_all = float(np.sqrt(np.mean([e ** 2 for e in err.values()])))
+            on_driven = [err[j] for j in err if j in driven]
+            rms_driven = (float(np.sqrt(np.mean([e ** 2 for e in on_driven])))
+                          if on_driven else float("nan"))
+            # Same reason the ROM mode splits coverage from fidelity: an error
+            # at a joint the device never drives is the healthy hand moving,
+            # not the device being wrong, and pooling the two makes a
+            # narrow-but-accurate device look like a wide-but-sloppy one.
+            print(f"\n{ad.name}  ({n}/{a.trials} usable)")
+            print(f"  RMS posture error: {rms_driven:5.1f} deg on driven joints"
+                  f"   ({rms_all:.1f} deg over all)")
             for dig, lbl, j in ALL_JOINTS:
                 if j in res:
-                    print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg   {err[j]:+7.1f}")
-            out["devices"][ad.name] = {"usable": n, "posture_deg": res,
-                                       "error_deg": err, "rms_error_deg": rms}
+                    role = ("splinted" if j in splinted else
+                            "driven" if j in driven else "not driven")
+                    print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg   {err[j]:+7.1f}   {role}")
+            out["devices"][ad.name] = {
+                "usable": n, "posture_deg": res, "error_deg": err,
+                "driven": sorted(driven), "splinted": sorted(splinted),
+                "rms_error_deg": rms_all,
+                "rms_error_driven_deg": rms_driven if rms_driven == rms_driven else None}
+
+    if a.mode == "grasp":
+        print("\n" + "=" * 62)
+        print(f"{'device':<34}{'RMS(driven)':>13}{'RMS(all)':>11}")
+        for nm, v in out["devices"].items():
+            if v.get("rms_error_driven_deg") is None:
+                continue
+            print(f"{nm:<34}{v['rms_error_driven_deg']:11.1f} deg"
+                  f"{v['rms_error_deg']:8.1f} deg")
+        print("=" * 62)
 
     if a.mode == "rom":
+        print("\n" + "=" * 62)
+        print(f"{'device':<34}{'COVERAGE':>10}{'FIDELITY':>10}")
+        for nm, v in out["devices"].items():
+            if v.get("coverage_pct") is None:
+                continue
+            print(f"{nm:<34}{v['coverage_pct']:9.1f}%{v['fidelity_pct']:9.1f}%")
+        print("=" * 62)
+        print("COVERAGE = share of scorable joints the device drives at all")
+        print("FIDELITY = how closely those joints match the healthy hand's motion")
         print("\nPublished reference for D1 (Zhao et al. 2025, Sec. 3.2, index finger):")
         print("  MCP 41.67%   PIP 74.19%   DIP 59.02%")
 

@@ -878,7 +878,8 @@ def glove_dev_adapters():
            for d in ("D1_underactuated_distal_calibrated",
                      "D2_synergy_cross_finger_calibrated",
                      "D3_uniform_single_dof_calibrated",
-                     "D4_v2_hybrid_per_finger_calibrated")},
+                     "D4_v2_hybrid_per_finger_calibrated",
+                     "D4_v2_opposition_first_calibrated")},
         **{f"portOP_{d}": KMatrixInGloveDevAdapter(
                 d, f"{base}/myohand_glove_dev.xml", "009_gelatin_box",
                 0.036, 0.014, 0.097, f"PORT+OP/{d.replace('_calibrated','')}",
@@ -886,7 +887,8 @@ def glove_dev_adapters():
            for d in ("D1_underactuated_distal_calibrated",
                      "D2_synergy_cross_finger_calibrated",
                      "D3_uniform_single_dof_calibrated",
-                     "D4_v2_hybrid_per_finger_calibrated")},
+                     "D4_v2_hybrid_per_finger_calibrated",
+                     "D4_v2_opposition_first_calibrated")},
         "splint_D3": SplintedThumbAdapter(
             "D3_uniform_single_dof_calibrated", f"{base}/myohand_glove_dev.xml",
             "009_gelatin_box", 0.036, 0.014, 0.097, "SPLINT/D3_uniform_single_dof",
