@@ -32,7 +32,7 @@ import numpy as np
 
 from hold_benchmark import (
     DROP_THRESHOLD_M, GATE_MIN_DIGITS, GATE_MIN_SECONDS, SplintedThumbAdapter,
-    T_MAX_DEFAULT, WristHold, _digits_in_contact, glove_dev_adapters, settle,
+    T_MAX_DEFAULT, WristHold, _gate_satisfied, glove_dev_adapters, settle,
 )
 
 EXO_TENDONS = ("exo_thumb_tendon", "exo_flex_tendon", "exo_ext_tendon")
@@ -196,9 +196,9 @@ def main():
 
         def closing(step):
             ad.set_input(m, d, min(step / ramp_steps, 1.0))
-            digits = _digits_in_contact(m, d, ad)
+            digits, ok_now = _gate_satisfied(m, d, ad)
             state["peak"] = max(state["peak"], len(digits))
-            if len(digits) >= GATE_MIN_DIGITS:
+            if ok_now:
                 state["run"] += 1
                 if state["run"] >= gate_needed:
                     state["gated"] = True

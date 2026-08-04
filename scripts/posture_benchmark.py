@@ -129,7 +129,7 @@ import numpy as np
 
 from hold_benchmark import (
     GATE_MIN_DIGITS, GATE_MIN_SECONDS, SETTLE_QUIET_STEPS, SETTLE_VEL_EPS,
-    WristHold, _digits_in_contact, glove_dev_adapters, settle,
+    WristHold, _gate_satisfied, glove_dev_adapters, settle,
 )
 
 # Joints reported, grouped by digit. Names are MyoHand's; the MCP/PIP/DIP
@@ -402,8 +402,8 @@ def grasp_trial(adapter, seed):
     for step in range(ramp_steps + int(6.0 / dt)):
         adapter.set_input(m, d, min(step / ramp_steps, 1.0))
         mujoco.mj_step(m, d)
-        digits = _digits_in_contact(m, d, adapter)
-        if len(digits) >= GATE_MIN_DIGITS:
+        digits, ok_now = _gate_satisfied(m, d, adapter)
+        if ok_now:
             gate_run += 1
             if gate_run >= gate_steps_needed:
                 return {"q": {j: np.degrees(float(d.qpos[a])) for j, a in adr.items()},

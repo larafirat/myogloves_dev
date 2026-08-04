@@ -48,12 +48,21 @@ KNOWN ASYMMETRY (stated, not silently averaged away)
 ----------------------------------------------------
 The glove_dev device is run with its native OP (opponens pollicis) thumb
 pre-shape, a documented modelling assumption that the wearer voluntarily
-opposes their own thumb. The K-matrix devices instead drive opposition
-through their own cmc_abduction row where they have one (D4 only; D1/D2/D3
-have zero thumb rows entirely). These are genuinely different device
-concepts and the pre-shape is part of one of them -- it is configurable per
-adapter (see Adapter.preshape) and recorded in the results so any
-comparison can account for it.
+opposes their own thumb. These are genuinely different device concepts and
+the pre-shape is part of one of them -- it is configurable per adapter (see
+Adapter.preshape) and recorded in the results so any comparison can account
+for it.
+
+Where each device's opposition comes from, once the primary sources were
+checked (an earlier version of this note said "D1/D2/D3 have zero thumb rows
+entirely", which was wrong for D1 and D2):
+  D1  nowhere. It drives all five digits but has NO abduction DoF at all --
+      by design, it is a flexion/extension TRAINING device, not a grasp aid.
+      Under the opposition gate it forms an opposed grasp in 0 of 15 trials.
+  D2  thumb flexion only, no abduction actuator in the source device.
+  D3  a rigid C-bar splint holding the thumb as a passive post. Modelled.
+  D4  a dedicated thumb-opposition tendon on its own motor -- the only
+      device here with actively actuated opposition.
 
 Usage:
     python hold_benchmark.py pilot                 # short run, picks T_max
@@ -106,18 +115,26 @@ SETTLE_VEL_EPS = 1e-3      # m/s, object linear speed considered "at rest"
 SETTLE_QUIET_STEPS = 50    # consecutive quiet steps required
 GATE_MIN_DIGITS = 2        # >= N distinct digits in contact...
 GATE_MIN_SECONDS = 1.0     # ...continuously for >= this long
-# KNOWN WEAKNESS in that gate, observed but not yet acted on: it counts ANY two
-# distinct digits, with no requirement that they oppose each other. Watching
-# seed 1000 in the viewer, glove_dev and splint_D3 gate on (index, middle,
-# thumb) -- a real tripod -- while D1 and D4 gate on (index, LITTLE). A pinky
-# brushing the object certifies the grasp for scoring purposes even though
-# nothing is opposing anything. Since the gate opens the hold clock, a device
-# gated on a non-opposing pair starts its clock in a configuration that was
-# never going to hold, which would depress its hold time for a reason that is
-# about the metric rather than the device. Changing GATE_MIN_DIGITS or adding
-# an opposition requirement would move every number in this repo, so it is
-# recorded here rather than changed silently -- but D1 and D4 sitting at the
-# bottom of the table is not safe to interpret until it is resolved.
+# ...AND at least one pair of those digits must actually OPPOSE each other.
+#
+# Digit count alone was not a grasp test. Measured at the gate moment, seed
+# 1000, mean contact normal per digit oriented away from the object:
+#     glove_dev   index vs thumb  -0.991   opposing
+#     splint_D3   index vs thumb  -1.000   opposing
+#     D1          index vs little +1.000   pushing the SAME way
+#     D4          index vs little +1.000   pushing the SAME way
+# D1 and D4 were being certified by two fingers shoving the object in one
+# direction, with nothing on the far side. The gate opens the hold clock, so
+# those two started their clock in a configuration that could not hold and
+# were then scored on how fast it failed -- a property of the metric, not of
+# the device.
+#
+# The separation between real and fake grasps here is enormous (-0.99 against
+# +1.00), so the threshold is not a sensitive tuning knob; anything in the
+# broad middle gives the same answer. -0.5 is roughly "more than 120 degrees
+# apart".
+GATE_REQUIRE_OPPOSITION = True
+GATE_OPPOSITION_DOT = -0.5
 DROP_THRESHOLD_M = 0.05    # object CoM falling this far below its release
                            # height counts as failure
 T_MAX_DEFAULT = 5.0
@@ -775,9 +792,9 @@ def run_trial(adapter, seed, t_max, mass_override=None):
         adapter.set_input(m, d, u)
         mujoco.mj_step(m, d)
 
-        digits = _digits_in_contact(m, d, adapter)
+        digits, ok_now = _gate_satisfied(m, d, adapter)
         max_digits = max(max_digits, len(digits))
-        if len(digits) >= GATE_MIN_DIGITS:
+        if ok_now:
             gate_run += 1
             if gate_run >= gate_steps_needed:
                 gate_passed_step = step
@@ -804,21 +821,57 @@ def run_trial(adapter, seed, t_max, mass_override=None):
             "max_digits": max_digits, "mass": adapter.mass_used}
 
 
-def _digits_in_contact(model, data, adapter):
-    hit = set()
+def _digit_contact_normals(model, data, adapter):
+    """digit -> unit mean contact normal, oriented to point AWAY from the object.
+
+    MuJoCo's contact normal (frame rows 0-2) points from geom1 toward geom2, so
+    the sign has to be flipped when the object is geom2. Getting that backwards
+    would invert every opposition test, so it is done once, here.
+    """
+    acc = {}
     for i in range(data.ncon):
         c = data.contact[i]
-        other = None
         if c.geom1 in adapter.obj_geoms:
-            other = model.geom_bodyid[c.geom2]
+            other, sign = model.geom_bodyid[c.geom2], 1.0
         elif c.geom2 in adapter.obj_geoms:
-            other = model.geom_bodyid[c.geom1]
-        if other is None:
+            other, sign = model.geom_bodyid[c.geom1], -1.0
+        else:
             continue
+        n = np.array(c.frame[:3], dtype=float) * sign
         for dig, ids in adapter.digit_ids.items():
             if other in ids:
-                hit.add(dig)
-    return hit
+                acc.setdefault(dig, []).append(n)
+    out = {}
+    for dig, ns in acc.items():
+        v = np.mean(ns, axis=0)
+        norm = float(np.linalg.norm(v))
+        out[dig] = v / norm if norm > 1e-9 else v
+    return out
+
+
+def _digits_in_contact(model, data, adapter):
+    return set(_digit_contact_normals(model, data, adapter))
+
+
+def _gate_satisfied(model, data, adapter):
+    """(digits_in_contact, gate_is_satisfied) for this instant.
+
+    Satisfied = enough distinct digits AND, unless disabled, at least one pair
+    of them opposing. See GATE_REQUIRE_OPPOSITION for why the second clause
+    exists.
+    """
+    normals = _digit_contact_normals(model, data, adapter)
+    digits = set(normals)
+    if len(digits) < GATE_MIN_DIGITS:
+        return digits, False
+    if not GATE_REQUIRE_OPPOSITION:
+        return digits, True
+    keys = sorted(normals)
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            if float(np.dot(normals[a], normals[b])) < GATE_OPPOSITION_DOT:
+                return digits, True
+    return digits, False
 
 
 # ---------------------------------------------------------------- aggregation

@@ -396,6 +396,15 @@ DEVICES = {
     # are added, so this correction adds capability without rescaling what was
     # already there.
     #
+    # SUPERSEDED IN PART: the ablation below predates the opposition gate. Its
+    # relative comparisons stand (all four cells ran under the same gate), but
+    # the absolute hold times do not -- under a gate that requires an actually
+    # opposing pair of digits, D1 forms a grasp in 0 of 15 trials. It has no
+    # abduction DoF at all, which is faithful to the source: this is a
+    # flexion/extension TRAINING device, and the paper never claims otherwise.
+    # Its previous non-zero hold times came from the gate accepting index+little
+    # contacts pushing the object the same direction (normal dot +1.000).
+    #
     # ABLATION (15 seed-matched trials each, box rig, OP pre-shape, median hold):
     #                        ulnar ON   ulnar OFF
     #   correct thumb sign     0.66s      1.21s
