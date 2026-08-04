@@ -129,7 +129,7 @@ import numpy as np
 
 from hold_benchmark import (
     GATE_MIN_DIGITS, GATE_MIN_SECONDS, SETTLE_QUIET_STEPS, SETTLE_VEL_EPS,
-    WristHold, _gate_satisfied, glove_dev_adapters, settle,
+    WristHold, _gate_satisfied, driven_joints, glove_dev_adapters, settle,
 )
 
 # Joints reported, grouped by digit. Names are MyoHand's; the MCP/PIP/DIP
@@ -178,103 +178,6 @@ def scorable(ref_excursion):
 #   FIDELITY  how naturally it moves THOSE        (quality where it acts)
 # Neither alone is a verdict: full coverage with poor fidelity is a glove that
 # moves everything wrongly, and high fidelity on two joints is a pinch aid.
-MIN_LEVERAGE_MM = 0.5   # tendon moment arm below this is numerical, not drive
-
-
-def driven_joints(model, adapter):
-    """Joint names this device actually actuates, and how it knows.
-
-    Two device families need two answers, and neither can be guessed from the
-    resulting motion (that would be circular -- the motion is what is being
-    scored):
-
-      K-matrix devices (D1-D4)  a joint is driven if its K row is non-zero for
-                                some channel. This is the device's own
-                                declaration of what it drives.
-      Tyrone's glove            it has no K matrix, it has real routed tendons.
-                                A joint is driven if one of the exo tendons has
-                                meaningful leverage over it, measured the same
-                                way MOMENT_ARMS_MM was. Result: index and
-                                middle in full, plus cmc_abduction and
-                                mp_flexion -- 9 of 16. Notably its abduction
-                                moment arm is 13.7 mm, roughly 4x the FPL's
-                                3.9 mm, so the design is weighted hard toward
-                                thumb opposition. It does not drive cmc_flexion
-                                (0.06 mm), ip_flexion, or the ulnar digits.
-
-    Splinted joints are returned separately: they are neither driven nor
-    ignored, they are deliberately immobilised, and they belong in neither
-    average.
-    """
-    from exo_devices import JOINT_NAMES
-
-    splinted = set()
-    if hasattr(adapter, "SPLINT_POSE"):
-        splinted = set(adapter.SPLINT_POSE)
-
-    device = getattr(adapter, "device", None)
-    if device is not None:
-        driven = {j for row, j in enumerate(JOINT_NAMES)
-                  if np.any(device.K[row, :] != 0.0)}
-        return driven - splinted, splinted
-
-    driven = set()
-    data = mujoco.MjData(model)
-    for tname in ("exo_flex_tendon", "exo_thumb_tendon", "exo_ext_tendon"):
-        try:
-            tid = model.tendon(tname).id
-        except KeyError:
-            continue
-        for jname in JOINT_NAMES:
-            try:
-                qadr = model.joint(jname).qposadr[0]
-            except KeyError:
-                continue
-            mujoco.mj_resetData(model, data)
-            mujoco.mj_forward(model, data)
-            l0 = data.ten_length[tid]
-            data.qpos[qadr] += 1e-4
-            mujoco.mj_forward(model, data)
-            if abs((data.ten_length[tid] - l0) / 1e-4 * 1000.0) > MIN_LEVERAGE_MM:
-                driven.add(jname)
-    return driven - splinted, splinted
-
-
-def similarity(dev_excursion, ref_excursion):
-    """Zhao et al.'s Eq. 1 as a percentage, or NaN where it is not meaningful.
-
-    Opposite-signed motion is rejected rather than reported as a negative
-    percentage: a device that drives a joint the WRONG WAY has not achieved
-    "-33% of the natural range", it has failed to reproduce the motion at all,
-    and letting a negative number into a mean would let a wrong-direction joint
-    cancel out a correct one.
-    """
-    if not scorable(ref_excursion):
-        return float("nan")
-    if dev_excursion * ref_excursion <= 0.0:
-        return 0.0
-    return 100.0 * dev_excursion / ref_excursion
-
-
-def match(dev_excursion, ref_excursion):
-    """Symmetric agreement, 0-100%, used for the ACROSS-JOINT aggregate.
-
-    Eq. 1 is kept per-joint because it is the published quantity and the point
-    of this mode is to be checkable against published numbers. It is the wrong
-    thing to average, though: it is unbounded above, so a joint the device
-    over-flexes to 460% of natural does not read as "badly wrong" in a mean,
-    it reads as a large bonus that can drag a whole device's score above 100%
-    and hide genuine deficits elsewhere. Under- and over-shooting by the same
-    factor should cost the same, which is what min/max gives.
-    """
-    if not scorable(ref_excursion):
-        return float("nan")
-    if dev_excursion * ref_excursion <= 0.0:
-        return 0.0
-    lo, hi = sorted((abs(dev_excursion), abs(ref_excursion)))
-    return 100.0 * lo / hi
-
-
 def _joint_qadr(model):
     """qpos addresses for the reported joints, skipping any the model lacks."""
     adr = {}
@@ -430,7 +333,14 @@ def main():
     ap.add_argument("--reference", default="healthy_box")
     ap.add_argument("--devices", default="")
     ap.add_argument("--out", default="")
+    ap.add_argument("--strap", type=float, default=None,
+                    help="transmission stiffness N*m/rad; see hold_benchmark")
     a = ap.parse_args()
+    if a.strap is not None:
+        import hold_benchmark
+        hold_benchmark.STRAP_STIFFNESS = a.strap
+    import hold_benchmark as _hb
+    print(f"transmission: STRAP_STIFFNESS = {_hb.STRAP_STIFFNESS} N*m/rad")
 
     pool = glove_dev_adapters()
     # splint_D3 rather than portOP_D3: the splint is the device as it actually

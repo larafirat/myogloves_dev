@@ -154,6 +154,125 @@ HAND_DAMPING_BOOST = 1.0
 POS_JITTER_M = 0.003
 MASS_JITTER_FRAC = 0.02
 
+# --- Transmission loss: devices as WORN, not as idealised -------------------
+#
+# Every device here delivers torque straight to the joint. Real ones do not:
+# force reaches the finger through fabric, straps, Velcro and (for the rigid
+# designs) linkage play, all of which stretch. posture_benchmark.py measured
+# how much that matters by reproducing Zhao et al.'s published joint-angle
+# similarity protocol, and the gap is not subtle -- simulated 96/99/461% at
+# the index MCP/PIP/DIP against their measured 42/74/59%. Zhao et al. name the
+# cause themselves: "the space occupied by the Velcro used to secure the
+# exoskeleton on the hand, as well as the limitations of the underactuated
+# structure's force transmission, which reduces the effective range of
+# motion".
+#
+# MODEL: series elasticity. The strap is a spring between the actuator and the
+# bone, anchored at the pose the device was DONNED in (captured lazily at the
+# first driven step, i.e. after settling). The further the joint travels from
+# there, the more of the commanded torque goes into stretching the strap
+# instead of moving the finger:
+#
+#     tau_delivered = tau_commanded - STRAP_STIFFNESS * (q - q_donned)
+#
+# A scalar efficiency (tau * eta) was considered first and rejected: with a
+# pure torque source in free air, scaling the torque changes how FAST a joint
+# travels but not how far it ends up, so it cannot reproduce a range-of-motion
+# deficit at all. Series compliance can, because it introduces an equilibrium
+# at roughly tau/k -- which is exactly the mechanism the paper describes.
+#
+# Applied to EVERY device including glove_dev. This does not touch the
+# exoglove's own force ratings, lengthranges or tendon routing -- it is a model
+# of the glove-to-skin interface, which his design has as much as any other
+# (it is a soft glove). Excluding him would hand him an advantage the hardware
+# does not have.
+#
+# NOT applied to the healthy-hand control, which wears no device.
+#
+# STRAP_STIFFNESS is CALIBRATED against Zhao et al.'s published numbers rather
+# than chosen -- one parameter fitted to three published observations, so it
+# can be wrong. See calibrate_strap.py for the fit and its residual.
+# CALIBRATION RESULT -- and it is a NEGATIVE result worth reading before using
+# this. Fitting the single stiffness against Zhao et al.'s three published index
+# similarities (calibrate_strap.py, 5 trials per candidate):
+#
+#     k       MCP     PIP     DIP    RMS err
+#   0.000    85.5%   69.6%  288.9%    135.1
+#   0.035    69.0%   58.2%  197.9%     82.3
+#   0.100    28.5%   23.2%   78.6%     32.4   <- best
+#   0.250    11.6%    9.3%   31.5%     44.2
+#   published 41.7%   74.2%   59.0%
+#
+# The residual bottoms out at 32.4 points and will not go lower, because the
+# mismatch is not one of SCALE, which is all a single spring can change. It is
+# one of SHAPE. Published, the PIP gets the most range (74.2%) and the MCP the
+# least (41.7%). Simulated, the MCP beats the PIP at every stiffness tried.
+# No value of k reorders them.
+#
+# That points somewhere specific, and not at this file. D1's calibrated K is
+# proximal-biased (1.000 / 0.908 / 0.618) because MyoHand's FDP moment arm
+# shrinks from MCP to DIP, which is what flipped Zhao et al.'s distal-biased
+# FORCE measurements (4.1 / 5.2 / 5.6 N) into proximal-biased TORQUE. The
+# published similarity is distal-favouring, consistent with their force data
+# and not with our torque conversion. So either MyoHand's FDP moment arms are
+# not representative of this device's real geometry, or the device does not
+# transmit along the FDP path that every calibrated K in this repo assumes.
+# Resolving that is a moment-arm question, not a strap question.
+#
+# Consequence for use: the strap model is physically right in KIND (ideal
+# transmission is certainly wrong) but its one fitted number carries a large
+# residual, so switching it on trades a known bias for a poorly-constrained
+# one. It therefore defaults OFF and is opt-in per run (--strap), and both
+# settings are reported rather than one being quietly adopted.
+# SECOND REASON IT DEFAULTS OFF, found by running it. At the best-fit k=0.1,
+# 15 trials on the box:
+#     HEALTHY        60.0% grasp  1.45s   (unchanged -- wears no device)
+#     D3 + splint   100.0% grasp  1.45s   (barely touched: 1.63 -> 1.45s)
+#     D4             13.3% grasp  0.88s   (was 93.3%)
+#     Tyrone          0.0% grasp          (was 93.3%)
+#     D1, D2          0.0% grasp
+# D3 survives almost untouched because its opposition comes from a splint,
+# which is modelled as a rigid joint constraint rather than as actuator torque,
+# so the strap never touches it. Every other device's opposition is torque and
+# gets attenuated. That is not D3 winning -- it is the one device whose key
+# mechanism is still idealised being compared against five that no longer are.
+# The same asymmetry was flagged when the splint was added ("every actively
+# driven thumb here competes against a perfect post"); this quantifies it.
+#
+# Making that comparison fair needs compliance in the splint too, and there is
+# no published number to set it from, so it is not invented here. Until then
+# the as-worn table measures the modelling asymmetry more than it measures the
+# devices, which is why 0.0 remains the default and both are always reported.
+STRAP_STIFFNESS = 0.0   # N*m/rad; 0 = ideal. Best fit to published data: 0.1
+
+
+class StrapTransmission:
+    """Series-elastic glove-to-bone interface. See STRAP_STIFFNESS above.
+
+    Anchors on first use rather than at build time: the donned pose is where
+    the hand sits once settled, not the model's authored keyframe, and the
+    strap is by definition unstretched at the moment the device starts pulling.
+    """
+
+    def __init__(self, model, joint_names, stiffness):
+        self.k = float(stiffness)
+        self.rows = []
+        for jname in joint_names:
+            try:
+                j = model.joint(jname)
+            except KeyError:
+                continue
+            self.rows.append((j.qposadr[0], j.dofadr[0]))
+        self.q_donned = None
+
+    def apply(self, data):
+        if self.k <= 0.0 or not self.rows:
+            return
+        if self.q_donned is None:
+            self.q_donned = np.array([float(data.qpos[q]) for q, _ in self.rows])
+        for (qadr, dofadr), q0 in zip(self.rows, self.q_donned):
+            data.qfrc_applied[dofadr] -= self.k * (float(data.qpos[qadr]) - q0)
+
 
 def settle(model, data, obj_body_id, cap_steps):
     """Step until the object is at rest (and stays at rest), or until cap.
@@ -222,6 +341,8 @@ def boost_hand_damping(model, skip_joints, skip_bodies=()):
 # ------------------------------------------------------------------ adapters
 
 class Adapter:
+    wears_device = True   # False only for the healthy control (no glove -> no strap)
+
     """Uniform interface so the benchmark loop is device-agnostic.
 
     Subclasses must provide a compiled model+data with the object resting on
@@ -353,11 +474,29 @@ class GloveDevAdapter(Adapter):
             for dig, bs in self.DIGIT_BODIES.items()
         }
         self.mass_used = mass
+        self._build_strap(m)
         return m, d
+
+    def _build_strap(self, model):
+        """Series-elastic transmission on the joints this device drives.
+
+        Called at the end of every build(). Subclasses that populate .device
+        call it again afterwards, because driven_joints() reads .device and the
+        base build() runs before the subclass has set it. The healthy-hand
+        control sets wears_device=False -- it has no glove, so it has no strap
+        losses either, and giving it any would quietly handicap the one
+        condition that exists to say what is physically achievable here.
+        """
+        self.strap = None
+        if STRAP_STIFFNESS > 0.0 and self.wears_device:
+            driven, _ = driven_joints(model, self)
+            self.strap = StrapTransmission(model, sorted(driven), STRAP_STIFFNESS)
 
     def set_input(self, model, data, u):
         data.ctrl[self.flex] = u
         data.ctrl[self.thumb] = u
+        if getattr(self, "strap", None) is not None:
+            self.strap.apply(data)
 
     def release_support(self, model, data):
         data.mocap_pos[self.pillar_mocap] = data.mocap_pos[self.pillar_mocap] + np.array([0.5, 0.0, 0.0])
@@ -388,6 +527,7 @@ class HealthyHandAdapter(GloveDevAdapter):
                        "FPL", "OP"]
     preshape = "n/a -- healthy hand, native muscles driven directly"
     drive = "native_muscles"
+    wears_device = False
 
     def build(self, rng, mass_override=None):
         m, d = super().build(rng, mass_override=mass_override)
@@ -561,6 +701,7 @@ class HealthyExogloveEnvAdapter(KMatrixAdapter):
     HEALTHY_MUSCLES = HealthyHandAdapter.HEALTHY_MUSCLES
     preshape = "n/a -- healthy hand, native muscles driven directly"
     drive = "native_muscles"
+    wears_device = False
 
     def build(self, rng, mass_override=None):
         m, d = super().build(rng, mass_override=mass_override)
@@ -640,6 +781,7 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
         obj_geom = self.obj_geoms[0]
         self.controller = GraspController(m, self.device, obj_geom,
                                           **dict(self.device.controller_overrides))
+        self._build_strap(m)   # .device now exists, so driven_joints() is meaningful
         return m, d
 
     def set_input(self, model, data, u):
@@ -652,6 +794,8 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
         data.qfrc_applied[:] = 0.0
         for idx, dof in self.rows:
             data.qfrc_applied[dof] = float(tau[idx])
+        if getattr(self, "strap", None) is not None:
+            self.strap.apply(data)
 
 
 class SplintedThumbAdapter(KMatrixInGloveDevAdapter):
@@ -745,6 +889,103 @@ class SplintedThumbAdapter(KMatrixInGloveDevAdapter):
             d.qpos[j.qposadr[0]] = target
         mujoco.mj_forward(m, d)
         return m, d
+
+
+MIN_LEVERAGE_MM = 0.5   # tendon moment arm below this is numerical, not drive
+
+
+def driven_joints(model, adapter):
+    """Joint names this device actually actuates, and how it knows.
+
+    Two device families need two answers, and neither can be guessed from the
+    resulting motion (that would be circular -- the motion is what is being
+    scored):
+
+      K-matrix devices (D1-D4)  a joint is driven if its K row is non-zero for
+                                some channel. This is the device's own
+                                declaration of what it drives.
+      Tyrone's glove            it has no K matrix, it has real routed tendons.
+                                A joint is driven if one of the exo tendons has
+                                meaningful leverage over it, measured the same
+                                way MOMENT_ARMS_MM was. Result: index and
+                                middle in full, plus cmc_abduction and
+                                mp_flexion -- 9 of 16. Notably its abduction
+                                moment arm is 13.7 mm, roughly 4x the FPL's
+                                3.9 mm, so the design is weighted hard toward
+                                thumb opposition. It does not drive cmc_flexion
+                                (0.06 mm), ip_flexion, or the ulnar digits.
+
+    Splinted joints are returned separately: they are neither driven nor
+    ignored, they are deliberately immobilised, and they belong in neither
+    average.
+    """
+    from exo_devices import JOINT_NAMES
+
+    splinted = set()
+    if hasattr(adapter, "SPLINT_POSE"):
+        splinted = set(adapter.SPLINT_POSE)
+
+    device = getattr(adapter, "device", None)
+    if device is not None:
+        driven = {j for row, j in enumerate(JOINT_NAMES)
+                  if np.any(device.K[row, :] != 0.0)}
+        return driven - splinted, splinted
+
+    driven = set()
+    data = mujoco.MjData(model)
+    for tname in ("exo_flex_tendon", "exo_thumb_tendon", "exo_ext_tendon"):
+        try:
+            tid = model.tendon(tname).id
+        except KeyError:
+            continue
+        for jname in JOINT_NAMES:
+            try:
+                qadr = model.joint(jname).qposadr[0]
+            except KeyError:
+                continue
+            mujoco.mj_resetData(model, data)
+            mujoco.mj_forward(model, data)
+            l0 = data.ten_length[tid]
+            data.qpos[qadr] += 1e-4
+            mujoco.mj_forward(model, data)
+            if abs((data.ten_length[tid] - l0) / 1e-4 * 1000.0) > MIN_LEVERAGE_MM:
+                driven.add(jname)
+    return driven - splinted, splinted
+
+
+def similarity(dev_excursion, ref_excursion):
+    """Zhao et al.'s Eq. 1 as a percentage, or NaN where it is not meaningful.
+
+    Opposite-signed motion is rejected rather than reported as a negative
+    percentage: a device that drives a joint the WRONG WAY has not achieved
+    "-33% of the natural range", it has failed to reproduce the motion at all,
+    and letting a negative number into a mean would let a wrong-direction joint
+    cancel out a correct one.
+    """
+    if not scorable(ref_excursion):
+        return float("nan")
+    if dev_excursion * ref_excursion <= 0.0:
+        return 0.0
+    return 100.0 * dev_excursion / ref_excursion
+
+
+def match(dev_excursion, ref_excursion):
+    """Symmetric agreement, 0-100%, used for the ACROSS-JOINT aggregate.
+
+    Eq. 1 is kept per-joint because it is the published quantity and the point
+    of this mode is to be checkable against published numbers. It is the wrong
+    thing to average, though: it is unbounded above, so a joint the device
+    over-flexes to 460% of natural does not read as "badly wrong" in a mean,
+    it reads as a large bonus that can drag a whole device's score above 100%
+    and hide genuine deficits elsewhere. Under- and over-shooting by the same
+    factor should cost the same, which is what min/max gives.
+    """
+    if not scorable(ref_excursion):
+        return float("nan")
+    if dev_excursion * ref_excursion <= 0.0:
+        return 0.0
+    lo, hi = sorted((abs(dev_excursion), abs(ref_excursion)))
+    return 100.0 * lo / hi
 
 
 def _has_body(model, name):
@@ -971,10 +1212,19 @@ def main():
     ap.add_argument("--tmax", type=float, default=T_MAX_DEFAULT)
     ap.add_argument("--masses", default="")
     ap.add_argument("--out", default="")
+    ap.add_argument("--strap", type=float, default=None,
+                    help="series-elastic transmission stiffness N*m/rad "
+                         "(0 = ideal; 0.1 = best fit to Zhao et al.)")
     ap.add_argument("--xs", default="")   # placesweep grid
     ap.add_argument("--ys", default="")
     ap.add_argument("--zs", default="")
     a = ap.parse_args()
+
+    if a.strap is not None:
+        global STRAP_STIFFNESS
+        STRAP_STIFFNESS = a.strap
+    print(f"transmission: STRAP_STIFFNESS = {STRAP_STIFFNESS} N*m/rad"
+          + ("  (ideal)" if STRAP_STIFFNESS == 0.0 else "  (as-worn)"))
 
     pool = glove_dev_adapters()
     pool["healthy_exoglove_env"] = HealthyExogloveEnvAdapter(
