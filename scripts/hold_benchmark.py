@@ -953,41 +953,6 @@ def driven_joints(model, adapter):
     return driven - splinted, splinted
 
 
-def similarity(dev_excursion, ref_excursion):
-    """Zhao et al.'s Eq. 1 as a percentage, or NaN where it is not meaningful.
-
-    Opposite-signed motion is rejected rather than reported as a negative
-    percentage: a device that drives a joint the WRONG WAY has not achieved
-    "-33% of the natural range", it has failed to reproduce the motion at all,
-    and letting a negative number into a mean would let a wrong-direction joint
-    cancel out a correct one.
-    """
-    if not scorable(ref_excursion):
-        return float("nan")
-    if dev_excursion * ref_excursion <= 0.0:
-        return 0.0
-    return 100.0 * dev_excursion / ref_excursion
-
-
-def match(dev_excursion, ref_excursion):
-    """Symmetric agreement, 0-100%, used for the ACROSS-JOINT aggregate.
-
-    Eq. 1 is kept per-joint because it is the published quantity and the point
-    of this mode is to be checkable against published numbers. It is the wrong
-    thing to average, though: it is unbounded above, so a joint the device
-    over-flexes to 460% of natural does not read as "badly wrong" in a mean,
-    it reads as a large bonus that can drag a whole device's score above 100%
-    and hide genuine deficits elsewhere. Under- and over-shooting by the same
-    factor should cost the same, which is what min/max gives.
-    """
-    if not scorable(ref_excursion):
-        return float("nan")
-    if dev_excursion * ref_excursion <= 0.0:
-        return 0.0
-    lo, hi = sorted((abs(dev_excursion), abs(ref_excursion)))
-    return 100.0 * lo / hi
-
-
 def _has_body(model, name):
     try:
         model.body(name)

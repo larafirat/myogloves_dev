@@ -178,6 +178,41 @@ def scorable(ref_excursion):
 #   FIDELITY  how naturally it moves THOSE        (quality where it acts)
 # Neither alone is a verdict: full coverage with poor fidelity is a glove that
 # moves everything wrongly, and high fidelity on two joints is a pinch aid.
+def similarity(dev_excursion, ref_excursion):
+    """Zhao et al.'s Eq. 1 as a percentage, or NaN where it is not meaningful.
+
+    Opposite-signed motion is rejected rather than reported as a negative
+    percentage: a device that drives a joint the WRONG WAY has not achieved
+    "-33% of the natural range", it has failed to reproduce the motion at all,
+    and letting a negative number into a mean would let a wrong-direction joint
+    cancel out a correct one.
+    """
+    if not scorable(ref_excursion):
+        return float("nan")
+    if dev_excursion * ref_excursion <= 0.0:
+        return 0.0
+    return 100.0 * dev_excursion / ref_excursion
+
+
+def match(dev_excursion, ref_excursion):
+    """Symmetric agreement, 0-100%, used for the ACROSS-JOINT aggregate.
+
+    Eq. 1 is kept per-joint because it is the published quantity and the point
+    of this mode is to be checkable against published numbers. It is the wrong
+    thing to average, though: it is unbounded above, so a joint the device
+    over-flexes to 460% of natural does not read as "badly wrong" in a mean,
+    it reads as a large bonus that can drag a whole device's score above 100%
+    and hide genuine deficits elsewhere. Under- and over-shooting by the same
+    factor should cost the same, which is what min/max gives.
+    """
+    if not scorable(ref_excursion):
+        return float("nan")
+    if dev_excursion * ref_excursion <= 0.0:
+        return 0.0
+    lo, hi = sorted((abs(dev_excursion), abs(ref_excursion)))
+    return 100.0 * lo / hi
+
+
 def _joint_qadr(model):
     """qpos addresses for the reported joints, skipping any the model lacks."""
     adr = {}
@@ -357,7 +392,11 @@ def main():
     key = None if a.mode == "rom" else "q"
 
     ref_ad = pool[a.reference]
-    ref, ref_n = median_over([run(ref_ad, 3000 + i) for i in range(a.trials)], key)
+    # Keep every trial, not just the median. A median hides whether a device is
+    # consistently near-natural or oscillating between two very different
+    # postures that happen to average out, and those are different devices.
+    ref_trials = [run(ref_ad, 3000 + i) for i in range(a.trials)]
+    ref, ref_n = median_over(ref_trials, key)
     if ref is None:
         raise SystemExit(f"reference {a.reference} produced no usable trials")
 
@@ -370,11 +409,22 @@ def main():
         print(f"  {dig[:3]+'.'+lbl:<10}{ref[j]:8.1f}   {mark}")
 
     out = {"mode": a.mode, "reference": ref_ad.name, "reference_deg": ref,
-           "min_ref_excursion_deg": MIN_REF_EXCURSION_DEG, "devices": {}}
+           "min_ref_excursion_deg": MIN_REF_EXCURSION_DEG,
+           "trials_requested": a.trials,
+           "reference_trials": [
+               {"seed": 3000 + i, "joints": (t if key is None else (t or {}).get(key))}
+               for i, t in enumerate(ref_trials)],
+           "devices": {}}
 
     for name in names:
         ad = pool[name]
-        res, n = median_over([run(ad, 3000 + i) for i in range(a.trials)], key)
+        trials = [run(ad, 3000 + i) for i in range(a.trials)]
+        res, n = median_over(trials, key)
+        per_trial = [{"seed": 3000 + i,
+                      "joints": (t if key is None else (t or {}).get(key)),
+                      "digits": (t or {}).get("digits") if key is not None else None,
+                      "usable": t is not None}
+                     for i, t in enumerate(trials)]
         if res is None:
             print(f"\n{ad.name}: no usable trials ({a.trials} attempted)")
             out["devices"][ad.name] = {"usable": 0}
@@ -407,6 +457,7 @@ def main():
                         "driven" if j in driven else "not driven")
                 print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg  {s}  {mm}  {role}")
             out["devices"][ad.name] = {
+                "per_trial": per_trial,
                 "usable": n, "excursion_deg": res, "similarity_pct": sim,
                 "match_pct": mat, "driven": sorted(driven), "splinted": sorted(splinted),
                 "coverage_pct": coverage if coverage == coverage else None,
@@ -432,6 +483,7 @@ def main():
                             "driven" if j in driven else "not driven")
                     print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg   {err[j]:+7.1f}   {role}")
             out["devices"][ad.name] = {
+                "per_trial": per_trial,
                 "usable": n, "posture_deg": res, "error_deg": err,
                 "driven": sorted(driven), "splinted": sorted(splinted),
                 "rms_error_deg": rms_all,
