@@ -1,0 +1,385 @@
+"""Posture benchmark -- part 2 of the evaluation plan, alongside hold_benchmark.py.
+
+hold_benchmark.py answers "can it keep hold of the object?". That is a necessary
+metric but not a sufficient one for a rehabilitation device: a glove that
+achieves a secure grip by dragging the hand into an anatomically wrong shape is
+not a good rehabilitation device, and the hold metric cannot see the difference.
+This script measures the shape.
+
+Two metrics, because they answer different questions.
+
+1. ROM SIMILARITY (mode `rom`) -- free-air closing, no object.
+
+   This one is deliberately a REPRODUCTION of a published protocol rather than
+   an invented metric, so the numbers can be checked against reality. Zhao et
+   al. 2025 (D1's own paper), Sec. 3.2 and Eq. 1:
+
+       Similarity = (joint angle wearing exoskeleton)
+                  / (joint angle without exoskeleton) x 100%
+
+   Their protocol maps onto this simulation almost exactly. Subjects were told
+   to keep their fingers "completely relaxed during the exoskeleton-assisted
+   movement, allowing for purely passive movement", then to "perform natural
+   flexion and extension movements" unassisted -- i.e. device-driven passive
+   hand vs. muscle-driven active hand, which is precisely the difference
+   between the KMatrix adapters and HealthyHandAdapter. Measured in free air
+   (their Fig. 9), so the object is decoupled here too.
+
+   Published reference values for D1, index finger: PIP 74.19%, DIP 59.02%,
+   MCP 41.67%. If this model of D1 is any good, it should land near those --
+   and that is a check no other metric in this repo provides, since every other
+   number here is self-referential.
+
+   RESULT OF THAT CHECK (8 trials, corrected five-motor D1, box rig):
+       joint      simulated     published
+       index MCP     96.2%        41.67%
+       index PIP     98.5%        74.19%
+       index DIP    461.3%        59.02%
+   The simulation overestimates delivered ROM by roughly 1.3x at the PIP and
+   2.3x at the MCP, and is off the scale at the DIP. This is not a tuning
+   failure, it is a structural limit of the whole K-matrix abstraction every
+   device in this repo is built on: a K matrix is an IDEAL torque source
+   applied directly to the joint, with no strap compliance, no linkage
+   friction, and no slack. Zhao et al. name exactly those losses as the reason
+   their own numbers are low -- "the space occupied by the Velcro used to
+   secure the exoskeleton on the hand, as well as the limitations of the
+   underactuated structure's force transmission, which reduces the effective
+   range of motion". None of that exists here.
+
+   The practical consequence is that every device in this repo, including
+   Tyrone's, is being simulated at its theoretical best rather than its
+   as-worn performance, and by a factor large enough to matter. Since the bias
+   applies to all of them it should not reorder the comparison, but any
+   absolute claim ("this glove restores N% of hand function") is not supported
+   by these numbers. Fixing it properly means adding a transmission-loss term
+   between the device and the joint, which no device definition here has.
+
+2. GRASP POSTURE ERROR (mode `grasp`) -- object present, posture sampled at the
+   moment the contact gate passes.
+
+   How far the assisted grasp's joint vector sits from the healthy hand's
+   grasp of the SAME object at the SAME placement, in RMS degrees. This is the
+   metric HealthyHandAdapter's docstring already anticipated ("the joint
+   trajectory recorded here is x_ref(t)"). Unlike ROM similarity it is
+   object-conditioned: a device can have poor free-air ROM but still arrive at
+   a reasonable grasp shape once contact does the shaping for it, and the two
+   metrics disagreeing is informative rather than contradictory.
+
+Usage:
+    python myogloves_dev/scripts/posture_benchmark.py rom
+    python myogloves_dev/scripts/posture_benchmark.py grasp --trials 10
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+
+import mujoco
+import numpy as np
+
+from hold_benchmark import (
+    GATE_MIN_DIGITS, GATE_MIN_SECONDS, SETTLE_QUIET_STEPS, SETTLE_VEL_EPS,
+    WristHold, _digits_in_contact, glove_dev_adapters, settle,
+)
+
+# Joints reported, grouped by digit. Names are MyoHand's; the MCP/PIP/DIP
+# labels are the ones Zhao et al. use, so the index row is directly comparable
+# to their published similarity figures.
+DIGIT_JOINTS = {
+    "index":  [("MCP", "mcp2_flexion"), ("PIP", "pm2_flexion"), ("DIP", "md2_flexion")],
+    "middle": [("MCP", "mcp3_flexion"), ("PIP", "pm3_flexion"), ("DIP", "md3_flexion")],
+    "ring":   [("MCP", "mcp4_flexion"), ("PIP", "pm4_flexion"), ("DIP", "md4_flexion")],
+    "little": [("MCP", "mcp5_flexion"), ("PIP", "pm5_flexion"), ("DIP", "md5_flexion")],
+    "thumb":  [("ABD", "cmc_abduction"), ("CMC", "cmc_flexion"),
+               ("MP", "mp_flexion"), ("IP", "ip_flexion")],
+}
+ALL_JOINTS = [(dig, lbl, jnt) for dig, js in DIGIT_JOINTS.items() for lbl, jnt in js]
+
+CLOSING_SECONDS = 1.5   # same ramp the hold benchmark uses, so postures are comparable
+FREE_AIR_SECONDS = 4.0  # ramp + settle time for the free-air excursion to plateau
+
+# A ratio metric needs a denominator worth dividing by. Several joints barely
+# move even in the healthy reference -- the index DIP travels ~18 deg and the
+# middle/little DIPs under 6 deg, because MyoHand's FDS pulls against FDP at
+# the distal joint -- and dividing by those turns a couple of degrees of
+# simulation noise into similarities in the hundreds of percent. Joints whose
+# reference excursion is below this threshold are reported but NOT scored.
+# (For context on whether the reference itself is sane where it does move:
+# healthy index MCP ~79 deg and PIP ~88 deg here, against 80 deg and 120 deg
+# measured on a human in Zhao et al.'s own Fig. 2. The DIP is where this model
+# and their subject genuinely part company, ~18 deg vs ~40 deg, which is
+# exactly why the DIP rows are excluded rather than trusted.)
+MIN_REF_EXCURSION_DEG = 15.0
+
+
+def scorable(ref_excursion):
+    return abs(ref_excursion) >= MIN_REF_EXCURSION_DEG
+
+
+def similarity(dev_excursion, ref_excursion):
+    """Zhao et al.'s Eq. 1 as a percentage, or NaN where it is not meaningful.
+
+    Opposite-signed motion is rejected rather than reported as a negative
+    percentage: a device that drives a joint the WRONG WAY has not achieved
+    "-33% of the natural range", it has failed to reproduce the motion at all,
+    and letting a negative number into a mean would let a wrong-direction joint
+    cancel out a correct one.
+    """
+    if not scorable(ref_excursion):
+        return float("nan")
+    if dev_excursion * ref_excursion <= 0.0:
+        return 0.0
+    return 100.0 * dev_excursion / ref_excursion
+
+
+def match(dev_excursion, ref_excursion):
+    """Symmetric agreement, 0-100%, used for the ACROSS-JOINT aggregate.
+
+    Eq. 1 is kept per-joint because it is the published quantity and the point
+    of this mode is to be checkable against published numbers. It is the wrong
+    thing to average, though: it is unbounded above, so a joint the device
+    over-flexes to 460% of natural does not read as "badly wrong" in a mean,
+    it reads as a large bonus that can drag a whole device's score above 100%
+    and hide genuine deficits elsewhere. Under- and over-shooting by the same
+    factor should cost the same, which is what min/max gives.
+    """
+    if not scorable(ref_excursion):
+        return float("nan")
+    if dev_excursion * ref_excursion <= 0.0:
+        return 0.0
+    lo, hi = sorted((abs(dev_excursion), abs(ref_excursion)))
+    return 100.0 * lo / hi
+
+
+def _joint_qadr(model):
+    """qpos addresses for the reported joints, skipping any the model lacks."""
+    adr = {}
+    for _, _, jnt in ALL_JOINTS:
+        try:
+            adr[jnt] = model.joint(jnt).qposadr[0]
+        except KeyError:
+            continue
+    return adr
+
+
+def _decouple_object(model, adapter):
+    """Free-air mode: make the object and its support pillar non-colliding.
+
+    Zeroing contype/conaffinity rather than moving the bodies away is the safer
+    of the two options -- the graspable object sits on slide joints whose axes
+    are expressed in the BODY frame, and for the rotated gelatin box those axes
+    do not line up with the world ones (a bug this repo has already been bitten
+    by once). Killing the contact bitmasks needs no coordinates at all.
+
+    Once decoupled the object simply falls away, which is harmless but does
+    mean hold_benchmark's settle() cannot be reused here -- it treats a falling
+    object as SETUP_FAIL. See settle_hand_only below.
+    """
+    for g in adapter.obj_geoms:
+        model.geom_contype[g] = 0
+        model.geom_conaffinity[g] = 0
+    try:
+        pg = model.geom("glove_dev_support_pillar_geom").id
+        model.geom_contype[pg] = 0
+        model.geom_conaffinity[pg] = 0
+    except KeyError:
+        pass
+
+
+def settle_hand_only(model, data, obj_dofs, cap_steps):
+    """Free-air settle: wait for the HAND to go quiet, ignoring the object.
+
+    hold_benchmark.settle() cannot be used in free-air mode for two reasons,
+    both caused by the decoupled object falling: it trips the drop check
+    (scored as SETUP_FAIL), and its ever-growing fall velocity means the
+    whole-system quiescence test never passes either. Masking the object's own
+    DoFs out of the velocity check fixes both, and leaves the hand-side
+    criterion identical to the shared one so postures stay comparable.
+    """
+    mask = np.ones(model.nv, dtype=bool)
+    mask[obj_dofs] = False
+    quiet = 0
+    for s_ in range(cap_steps):
+        mujoco.mj_step(model, data)
+        if float(np.abs(data.qvel[mask]).max()) < SETTLE_VEL_EPS:
+            quiet += 1
+            if quiet >= SETTLE_QUIET_STEPS:
+                return s_ + 1, True
+        else:
+            quiet = 0
+    return cap_steps, True
+
+
+def _object_dofs(model, obj_body_id):
+    dofs = []
+    for j in range(model.njnt):
+        if model.jnt_bodyid[j] != obj_body_id:
+            continue
+        n = {mujoco.mjtJoint.mjJNT_FREE: 6, mujoco.mjtJoint.mjJNT_BALL: 3,
+             mujoco.mjtJoint.mjJNT_SLIDE: 1, mujoco.mjtJoint.mjJNT_HINGE: 1}[model.jnt_type[j]]
+        dofs.extend(range(model.jnt_dofadr[j], model.jnt_dofadr[j] + n))
+    return dofs
+
+
+def rom_trial(adapter, seed):
+    """Free-air closing. Returns per-joint excursion (deg) from the settled pose."""
+    rng = np.random.default_rng(seed)
+    m, d = adapter.build(rng)
+    _decouple_object(m, adapter)
+    dt = m.opt.timestep
+
+    mujoco.mj_forward(m, d)
+    if hasattr(adapter, "wrist"):
+        adapter.wrist = WristHold(m, d)
+    settle_hand_only(m, d, _object_dofs(m, adapter.oid), adapter.settle_cap)
+
+    adr = _joint_qadr(m)
+    start = {j: float(d.qpos[a]) for j, a in adr.items()}
+    peak = dict(start)
+
+    ramp_steps = max(1, int(CLOSING_SECONDS / dt))
+    for step in range(int(FREE_AIR_SECONDS / dt)):
+        adapter.set_input(m, d, min(step / ramp_steps, 1.0))
+        mujoco.mj_step(m, d)
+        for j, a in adr.items():
+            q = float(d.qpos[a])
+            # Track the largest EXCURSION in either direction, not the largest
+            # positive angle: thumb opposition in this model is reached by
+            # NEGATIVE cmc_abduction, so a max-only rule would score a
+            # correctly opposing thumb as having moved nowhere.
+            if abs(q - start[j]) > abs(peak[j] - start[j]):
+                peak[j] = q
+
+    return {j: np.degrees(peak[j] - start[j]) for j in adr}
+
+
+def grasp_trial(adapter, seed):
+    """Closing WITH the object. Returns the joint vector (deg) at the moment the
+    contact gate passes, plus which digits were in contact. Returns None if the
+    device never establishes a gated grasp -- posture is undefined without one,
+    and substituting the end-of-ramp pose would quietly mix "grasped badly" in
+    with "never grasped", which are different failures."""
+    rng = np.random.default_rng(seed)
+    m, d = adapter.build(rng)
+    dt = m.opt.timestep
+
+    mujoco.mj_forward(m, d)
+    if hasattr(adapter, "wrist"):
+        adapter.wrist = WristHold(m, d)
+    _, ok = settle(m, d, adapter.oid, adapter.settle_cap)
+    if not ok:
+        return None
+
+    adr = _joint_qadr(m)
+    ramp_steps = max(1, int(CLOSING_SECONDS / dt))
+    gate_steps_needed = int(GATE_MIN_SECONDS / dt)
+    gate_run = 0
+
+    for step in range(ramp_steps + int(6.0 / dt)):
+        adapter.set_input(m, d, min(step / ramp_steps, 1.0))
+        mujoco.mj_step(m, d)
+        digits = _digits_in_contact(m, d, adapter)
+        if len(digits) >= GATE_MIN_DIGITS:
+            gate_run += 1
+            if gate_run >= gate_steps_needed:
+                return {"q": {j: np.degrees(float(d.qpos[a])) for j, a in adr.items()},
+                        "digits": sorted(digits)}
+        else:
+            gate_run = 0
+    return None
+
+
+def median_over(trials, key=None):
+    """Per-joint median across trials, ignoring failed ones."""
+    good = [t for t in trials if t is not None]
+    if not good:
+        return None, 0
+    vals = [t if key is None else t[key] for t in good]
+    joints = vals[0].keys()
+    return {j: float(np.median([v[j] for v in vals])) for j in joints}, len(good)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("mode", choices=["rom", "grasp"])
+    ap.add_argument("--trials", type=int, default=10)
+    ap.add_argument("--reference", default="healthy_box")
+    ap.add_argument("--devices", default="")
+    ap.add_argument("--out", default="")
+    a = ap.parse_args()
+
+    pool = glove_dev_adapters()
+    default = ["glove_dev_box"] + [
+        f"portOP_{d}" for d in ("D1_underactuated_distal_calibrated",
+                                "D2_synergy_cross_finger_calibrated",
+                                "D3_uniform_single_dof_calibrated",
+                                "D4_v2_hybrid_per_finger_calibrated")]
+    names = [n for n in a.devices.split(",") if n] or default
+
+    run = rom_trial if a.mode == "rom" else grasp_trial
+    key = None if a.mode == "rom" else "q"
+
+    ref_ad = pool[a.reference]
+    ref, ref_n = median_over([run(ref_ad, 3000 + i) for i in range(a.trials)], key)
+    if ref is None:
+        raise SystemExit(f"reference {a.reference} produced no usable trials")
+
+    print(f"\nREFERENCE  {ref_ad.name}  ({ref_n}/{a.trials} usable trials)")
+    print(f"  {'joint':<10}{'deg':>8}   scored?")
+    for dig, lbl, j in ALL_JOINTS:
+        if j not in ref:
+            continue
+        mark = "yes" if scorable(ref[j]) else f"NO  (|ref| < {MIN_REF_EXCURSION_DEG:.0f} deg)"
+        print(f"  {dig[:3]+'.'+lbl:<10}{ref[j]:8.1f}   {mark}")
+
+    out = {"mode": a.mode, "reference": ref_ad.name, "reference_deg": ref,
+           "min_ref_excursion_deg": MIN_REF_EXCURSION_DEG, "devices": {}}
+
+    for name in names:
+        ad = pool[name]
+        res, n = median_over([run(ad, 3000 + i) for i in range(a.trials)], key)
+        if res is None:
+            print(f"\n{ad.name}: no usable trials ({a.trials} attempted)")
+            out["devices"][ad.name] = {"usable": 0}
+            continue
+
+        if a.mode == "rom":
+            sim = {j: similarity(res[j], ref[j]) for j in res}
+            mat = {j: match(res[j], ref[j]) for j in res}
+            scored = [v for v in mat.values() if v == v]
+            agg = float(np.mean(scored)) if scored else float("nan")
+            print(f"\n{ad.name}  ({n}/{a.trials} usable)   "
+                  f"mean MATCH over {len(scored)} scored joints = {agg:.1f}%")
+            print(f"  {'joint':<10}{'excursion':>12}  {'Eq.1':>8}  {'match':>7}")
+            for dig, lbl, j in ALL_JOINTS:
+                if j not in res:
+                    continue
+                s = f"{sim[j]:7.1f}%" if sim[j] == sim[j] else "      --"
+                mm = f"{mat[j]:6.1f}%" if mat[j] == mat[j] else "     --"
+                print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg  {s}  {mm}")
+            out["devices"][ad.name] = {"usable": n, "excursion_deg": res,
+                                       "similarity_pct": sim, "match_pct": mat,
+                                       "mean_match_pct": agg if agg == agg else None}
+        else:
+            err = {j: res[j] - ref[j] for j in res}
+            rms = float(np.sqrt(np.mean([e ** 2 for e in err.values()])))
+            print(f"\n{ad.name}  ({n}/{a.trials} usable)   RMS posture error = {rms:.1f} deg")
+            for dig, lbl, j in ALL_JOINTS:
+                if j in res:
+                    print(f"  {dig[:3]+'.'+lbl:<10}{res[j]:8.1f} deg   {err[j]:+7.1f}")
+            out["devices"][ad.name] = {"usable": n, "posture_deg": res,
+                                       "error_deg": err, "rms_error_deg": rms}
+
+    if a.mode == "rom":
+        print("\nPublished reference for D1 (Zhao et al. 2025, Sec. 3.2, index finger):")
+        print("  MCP 41.67%   PIP 74.19%   DIP 59.02%")
+
+    if a.out:
+        with open(a.out, "w") as f:
+            json.dump(out, f, indent=2)
+        print(f"\nwrote {a.out}")
+
+
+if __name__ == "__main__":
+    main()

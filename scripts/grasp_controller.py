@@ -45,41 +45,73 @@ def _quat_from_z_to(direction):
     return np.array([np.cos(angle / 2.0), axis[0] * s, axis[1] * s, axis[2] * s])
 
 
+THUMB_FLEXION_ROWS = [JOINT_NAMES.index(n) for n in ("cmc_flexion", "mp_flexion", "ip_flexion")]
+
+
 def thumb_gate_channels(device):
-    """Channels that drive cmc_abduction AND at least one other (flexion) row
-    from the same shared input -- currently only D4's thumb channel. For
-    those channels, returns (channel, [other_row_indices]) so the controller
-    can hold the flexion rows back while abduction leads (see GraspController
-    docstring): a single tendon can't sequence sub-joints by itself (one u
-    scales every row in its column by the same factor), so recruiting
-    abduction before flexion has to happen in the controller, not the K
-    matrix -- exactly like the ramp/ease-off/slip-reflex logic already here
-    is a controller-level stand-in for what a real hand's motor program does."""
+    """Returns (gating_channel, [rows_to_hold_back]) so the controller can hold
+    the thumb's flexion rows back while abduction leads (see GraspController
+    docstring). Recruiting abduction before flexion has to happen in the
+    controller rather than the K matrix -- exactly like the ramp/ease-off/
+    slip-reflex logic already here is a controller-level stand-in for what a
+    real hand's motor program does.
+
+    Two device topologies produce this, and both must be handled:
+
+    1. SHARED channel -- one input drives cmc_abduction AND flexion rows
+       (D2's single synergy tendon, D1's placeholder-era thumb column). A
+       single tendon cannot sequence its own sub-joints, since one u scales
+       every row in its column by the same factor, so the gate is intrinsic.
+
+    2. DEDICATED channel -- cmc_abduction is the ONLY row a channel drives.
+       This is D4 after the correction from Gerez et al. 2020, which has a
+       separate thumb-opposition motor and tendon. The rows to hold back then
+       live in a DIFFERENT column (the thumb flexion channel), so the gate has
+       to reach across channels. Without this branch the parameters silently
+       became no-ops the moment the opposition channel was split out, and the
+       thumb would have curled and opposed simultaneously -- the very coupling
+       the real device's separate motor exists to avoid.
+    """
     pairs = []
     for col in range(device.n_inputs):
         if device.K[ABDUCTION_ROW, col] == 0.0:
             continue
-        other_rows = [row for row in range(len(JOINT_NAMES))
-                      if row != ABDUCTION_ROW and device.K[row, col] != 0.0]
-        if other_rows:
-            pairs.append((col, other_rows))
+        same_column_rows = [row for row in range(len(JOINT_NAMES))
+                            if row != ABDUCTION_ROW and device.K[row, col] != 0.0]
+        if same_column_rows:
+            pairs.append((col, same_column_rows))
+            continue
+        cross_column_rows = [row for row in THUMB_FLEXION_ROWS
+                             if any(device.K[row, other] != 0.0
+                                    for other in range(device.n_inputs) if other != col)]
+        if cross_column_rows:
+            pairs.append((col, cross_column_rows))
     return pairs
 
 
-def finger_gate_channels(device):
+def finger_gate_channels(device, thumb_gated_rows=()):
     """Per-finger channels whose 3 active rows are MCP/PIP/DIP only.
 
-    For these channels (currently D4's index and middle), return
-    (channel, mcp_row, pip_row, dip_row) so the controller can let the
-    larger proximal joints lead before the distal tip curls shut. This helps
-    the finger wrap around the object instead of pinching empty space first.
+    For these channels (D4's index and middle, and every digit of the
+    corrected five-motor D1), return (channel, mcp_row, pip_row, dip_row) so
+    the controller can let the larger proximal joints lead before the distal
+    tip curls shut. This helps the finger wrap around the object instead of
+    pinching empty space first.
+
+    thumb_gated_rows excludes the thumb flexion channel: its three rows
+    (cmc/mp/ip) are also consecutive, so it would otherwise be picked up here
+    and gated as if it were a finger, on top of the abduction gate that
+    already governs it.
     """
     triples = []
+    thumb_gated_rows = set(thumb_gated_rows)
     for col in range(device.n_inputs):
         active_rows = [row for row in range(len(JOINT_NAMES)) if device.K[row, col] != 0.0]
         if len(active_rows) != 3:
             continue
         if active_rows[0] == ABDUCTION_ROW:
+            continue
+        if thumb_gated_rows.issuperset(active_rows):
             continue
         if active_rows[1] == active_rows[0] + 1 and active_rows[2] == active_rows[1] + 1:
             triples.append((col, active_rows[0], active_rows[1], active_rows[2]))
@@ -283,7 +315,8 @@ class GraspController:
             except KeyError:
                 continue
         self.thumb_gate_channels = thumb_gate_channels(device)
-        self.finger_gate_channels = finger_gate_channels(device)
+        self.finger_gate_channels = finger_gate_channels(
+            device, {row for _, rows in self.thumb_gate_channels for row in rows})
         self.locked = [False] * device.n_inputs
         self.u = np.zeros(device.n_inputs)
         self.row_gate = np.ones(len(JOINT_NAMES))
