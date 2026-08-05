@@ -227,6 +227,9 @@ OBJECT_FRICTION = list(MYOASSIST_FRICTION)
 # model a gripping glove surface; leave it None to run bare-hand contact at the
 # reference value. This keeps the object identical to myoMPL's in every run.
 GLOVE_FRICTION = None
+# Substrings of body names that are scenery, not hand. Everything else in these
+# models is the arm/hand chain and is covered by the glove.
+NON_GLOVE_BODIES = ("pillar", "table")
 
 # Randomisation per trial (small perturbations, per the spec).
 # NOTE myoMPL randomises considerably harder: mass +-50 g (not +-2%), object
@@ -508,11 +511,19 @@ class GloveDevAdapter(Adapter):
             if m.geom_bodyid[g] == oid:
                 m.geom_friction[g] = OBJECT_FRICTION
         if GLOVE_FRICTION is not None and self.wears_device:
-            # Device side only: the hand/glove geoms, never the object, the
-            # pillar or the table. See GLOVE_FRICTION.
+            # Device side ONLY. "Everything that is not the object" is not the
+            # same as "the hand": this model also contains the world plane, a
+            # six-geom granite table and the support pillar, and making those
+            # grippier is both meaningless and harmful -- the pillar is what
+            # the object rests on while it settles.
             for g in range(m.ngeom):
-                if m.geom_bodyid[g] != oid and m.geom_contype[g]:
-                    m.geom_friction[g] = GLOVE_FRICTION
+                if not m.geom_contype[g] or m.geom_bodyid[g] == oid:
+                    continue
+                bname = m.body(m.geom_bodyid[g]).name
+                if m.geom_bodyid[g] == 0 or any(k in bname.lower()
+                                                for k in NON_GLOVE_BODIES):
+                    continue
+                m.geom_friction[g] = GLOVE_FRICTION
 
         # Placement override (device-neutral placement studies). Set body_pos
         # directly rather than offsetting the OBJT* slides: those joint axes
