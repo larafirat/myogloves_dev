@@ -135,8 +135,30 @@ GATE_MIN_SECONDS = 1.0     # ...continuously for >= this long
 # apart".
 GATE_REQUIRE_OPPOSITION = True
 GATE_OPPOSITION_DOT = -0.5
-DROP_THRESHOLD_M = 0.05    # object CoM falling this far below its release
-                           # height counts as failure
+DROP_THRESHOLD_M = 0.05    # object falling this far RELATIVE TO THE HAND counts
+                           # as failure -- see HAND_REF_BODY below
+# Measured in the HAND's frame, not the world's. This was a real defect, and it
+# inverted the answer on at least one object.
+#
+# The arm is a position servo with finite stiffness. While the support pillar
+# is in place it carries part of the load; removing it transfers that to the
+# arm, which then deflects until its springs rebalance. Traced on the box with
+# the healthy hand: the object descends 47.4 mm in world coordinates and was
+# scored as dropped, but the PALM descends 39.3 mm over the same interval, so
+# the object moves only 8.1 mm relative to the hand -- and that number stops
+# growing (8.0, 8.2, 8.2, 8.1 mm at 0.4/0.6/0.8/1.0 s). The grasp is stable.
+# The benchmark was scoring arm compliance as grasp failure.
+#
+# Grip force was ruled out before landing here: capping the healthy hand's
+# hold-phase activation from 1.0 down to 0.12 moved the can's median hold by
+# 0.1 s and the box's not at all, so the failures were never a squeeze problem.
+# Nor could they be a friction problem -- at the gate the digits apply ~193 N
+# of normal force to a 3.4 N can with mu=2.5, a friction capacity two orders of
+# magnitude above the load.
+#
+# capitate is the reference: a central carpal bone, so it tracks the palm
+# rather than any one finger, and it does not move when the digits close.
+HAND_REF_BODY = "capitate"
 T_MAX_DEFAULT = 5.0
 # Soft-tissue damping boost: DISABLED (1.0 = no boost), deliberately.
 #
@@ -1014,17 +1036,28 @@ def run_trial(adapter, seed, t_max, mass_override=None):
 
     # --- remove support; t=0 for the hold clock ----------------------------
     adapter.release_support(m, d)
-    release_z = float(d.xpos[adapter.oid][2])
+    href = _hand_ref(m)
+    def _rel_z():
+        return float(d.xpos[adapter.oid][2]) - (float(d.xpos[href][2]) if href is not None else 0.0)
+    release_z = _rel_z()
     hold_steps = int(t_max / dt)
     for step in range(hold_steps):
         adapter.set_input(m, d, 1.0)
         mujoco.mj_step(m, d)
-        if release_z - float(d.xpos[adapter.oid][2]) > DROP_THRESHOLD_M:
+        if release_z - _rel_z() > DROP_THRESHOLD_M:
             return {"outcome": Outcome.SLIPPED, "hold_s": step * dt, "censored": False,
                     "max_digits": max_digits, "mass": adapter.mass_used}
 
     return {"outcome": Outcome.SURVIVED, "hold_s": t_max, "censored": True,
             "max_digits": max_digits, "mass": adapter.mass_used}
+
+
+def _hand_ref(model):
+    """Body the drop test is measured against. None falls back to world."""
+    try:
+        return model.body(HAND_REF_BODY).id
+    except KeyError:
+        return None
 
 
 def _digit_contact_normals(model, data, adapter):
