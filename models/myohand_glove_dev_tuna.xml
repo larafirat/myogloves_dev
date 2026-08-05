@@ -344,11 +344,11 @@
              shapes (box 1.07s > can 0.74s > tuna 0.36s), consistent with a
              flat wide disc being the hardest case for thumb/finger
              opposition. See scripts/hold_benchmark.py. -->
-        <body name="glove_dev_support_pillar" pos="0.03 0.06 0.09" mocap="true">
-            <geom name="glove_dev_support_pillar_geom" type="box" size="0.08 0.08 0.09" rgba="0.3 0.3 0.35 1"/>
+        <body name="glove_dev_support_pillar" pos="0.05 0.06 0.08" mocap="true">
+            <geom name="glove_dev_support_pillar_geom" type="box" size="0.08 0.08 0.08" rgba="0.3 0.3 0.35 1"/>
         </body>
 
-        <body name="007_tuna_fish_can" pos="0.03 0.06 0.18" childclass="grab">
+        <body name="007_tuna_fish_can" pos="0.05 0.06 0.16" childclass="grab">
             <joint name="OBJTx" pos="0 0 0" axis="1 0 0" type="slide"/>
             <joint name="OBJTy" pos="0 0 0" axis="0 1 0" type="slide"/>
             <joint name="OBJTz" pos="0 0 0" axis="0 0 1" type="slide"/>

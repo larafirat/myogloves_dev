@@ -1118,50 +1118,57 @@ def fmt_summary(label, s, extra=""):
 
 # ---------------------------------------------------------------------- CLI
 
+# The three graspable objects, and everything that differs between them. Until
+# now only the box had ported devices, so every cross-device conclusion in this
+# repo rested on one object at one placement -- which is a single-object result
+# reported as a device comparison. Note the objects differ in MASS as well as
+# shape (0.097 / 0.171 / 0.349 kg), because they are the real YCB items; a
+# device doing worse on the can is not necessarily losing to its geometry.
+OBJECTS = {
+    "box":  ("myohand_glove_dev.xml",      "009_gelatin_box",     0.036, 0.014, 0.097, -0.044),
+    "tuna": ("myohand_glove_dev_tuna.xml", "007_tuna_fish_can",   0.042, 0.016, 0.171,  0.000),
+    "can":  ("myohand_glove_dev_can.xml",  "005_tomato_soup_can", 0.033, 0.050, 0.349,  0.000),
+}
+
+PORTED_DEVICES = (
+    "D1_underactuated_distal_calibrated",
+    "D2_synergy_cross_finger_calibrated",
+    "D3_uniform_single_dof_calibrated",
+    "D4_v2_hybrid_per_finger_calibrated",
+    "D4_v2_opposition_first_calibrated",
+)
+
+
 def glove_dev_adapters():
+    """Every condition, over every object.
+
+    Key naming: the box keys stay UNSUFFIXED ("portOP_D1_...", "splint_D3",
+    "healthy_box") so existing runs, scripts and saved result files keep
+    working unchanged; the other objects take a "_can" / "_tuna" suffix.
+    """
     base = "myogloves_dev/models"
-    return {
-        "glove_dev_box": GloveDevAdapter(f"{base}/myohand_glove_dev.xml",
-                                         "009_gelatin_box", 0.036, 0.014, 0.097,
-                                         "glove_dev/box", bottom_offset=-0.044),
-        "glove_dev_can": GloveDevAdapter(f"{base}/myohand_glove_dev_can.xml",
-                                         "005_tomato_soup_can", 0.033, 0.05, 0.349,
-                                         "glove_dev/can"),
-        "glove_dev_tuna": GloveDevAdapter(f"{base}/myohand_glove_dev_tuna.xml",
-                                          "007_tuna_fish_can", 0.042, 0.016, 0.171,
-                                          "glove_dev/tuna"),
-        **{f"port_{d}": KMatrixInGloveDevAdapter(
-                d, f"{base}/myohand_glove_dev.xml", "009_gelatin_box",
-                0.036, 0.014, 0.097, f"PORT/{d.replace('_calibrated','')}",
-                bottom_offset=-0.044)
-           for d in ("D1_underactuated_distal_calibrated",
-                     "D2_synergy_cross_finger_calibrated",
-                     "D3_uniform_single_dof_calibrated",
-                     "D4_v2_hybrid_per_finger_calibrated",
-                     "D4_v2_opposition_first_calibrated")},
-        **{f"portOP_{d}": KMatrixInGloveDevAdapter(
-                d, f"{base}/myohand_glove_dev.xml", "009_gelatin_box",
-                0.036, 0.014, 0.097, f"PORT+OP/{d.replace('_calibrated','')}",
-                bottom_offset=-0.044, op_preshape=0.5)
-           for d in ("D1_underactuated_distal_calibrated",
-                     "D2_synergy_cross_finger_calibrated",
-                     "D3_uniform_single_dof_calibrated",
-                     "D4_v2_hybrid_per_finger_calibrated",
-                     "D4_v2_opposition_first_calibrated")},
-        "splint_D3": SplintedThumbAdapter(
-            "D3_uniform_single_dof_calibrated", f"{base}/myohand_glove_dev.xml",
-            "009_gelatin_box", 0.036, 0.014, 0.097, "SPLINT/D3_uniform_single_dof",
-            bottom_offset=-0.044),
-        "healthy_box": HealthyHandAdapter(f"{base}/myohand_glove_dev.xml",
-                                          "009_gelatin_box", 0.036, 0.014, 0.097,
-                                          "HEALTHY/box", bottom_offset=-0.044),
-        "healthy_can": HealthyHandAdapter(f"{base}/myohand_glove_dev_can.xml",
-                                          "005_tomato_soup_can", 0.033, 0.05, 0.349,
-                                          "HEALTHY/can"),
-        "healthy_tuna": HealthyHandAdapter(f"{base}/myohand_glove_dev_tuna.xml",
-                                           "007_tuna_fish_can", 0.042, 0.016, 0.171,
-                                           "HEALTHY/tuna"),
-    }
+    pool = {}
+    for obj, (xml, body, r, half_h, mass, bottom) in OBJECTS.items():
+        path = f"{base}/{xml}"
+        sfx = "" if obj == "box" else f"_{obj}"
+        common = dict(bottom_offset=bottom)
+
+        pool[f"glove_dev_{obj}"] = GloveDevAdapter(
+            path, body, r, half_h, mass, f"glove_dev/{obj}", **common)
+        pool[f"healthy_{obj}"] = HealthyHandAdapter(
+            path, body, r, half_h, mass, f"HEALTHY/{obj}", **common)
+        pool[f"splint_D3{sfx}"] = SplintedThumbAdapter(
+            "D3_uniform_single_dof_calibrated", path, body, r, half_h, mass,
+            f"SPLINT/{obj}/D3_uniform_single_dof", **common)
+
+        for d in PORTED_DEVICES:
+            short = d.replace("_calibrated", "")
+            pool[f"port_{d}{sfx}"] = KMatrixInGloveDevAdapter(
+                d, path, body, r, half_h, mass, f"PORT/{obj}/{short}", **common)
+            pool[f"portOP_{d}{sfx}"] = KMatrixInGloveDevAdapter(
+                d, path, body, r, half_h, mass, f"PORT+OP/{obj}/{short}",
+                op_preshape=0.5, **common)
+    return pool
 
 
 def kmatrix_adapters(names):

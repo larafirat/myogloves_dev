@@ -347,8 +347,8 @@
              invalid numbers it replaces, but it is the real, honest result:
              this placement genuinely works without relying on any
              non-physical clipping. -->
-        <body name="glove_dev_support_pillar" pos="0.06 0.12 0.0925" mocap="true">
-            <geom name="glove_dev_support_pillar_geom" type="box" size="0.08 0.08 0.0925" rgba="0.3 0.3 0.35 1"/>
+        <body name="glove_dev_support_pillar" pos="0.08 0.10 0.085" mocap="true">
+            <geom name="glove_dev_support_pillar_geom" type="box" size="0.08 0.08 0.085" rgba="0.3 0.3 0.35 1"/>
         </body>
 
         <!-- Object-variant test (tomato soup can, a cylinder -- genuinely
@@ -360,7 +360,7 @@
              exactly). Placement re-tuned via grid search (see pillar comment
              above) for this object's own size (10cm tall, 6.6cm diameter,
              larger than the gelatin box). -->
-        <body name="005_tomato_soup_can" pos="0.06 0.12 0.185" childclass="grab">
+        <body name="005_tomato_soup_can" pos="0.08 0.10 0.17" childclass="grab">
             <joint name="OBJTx" pos="0 0 0" axis="1 0 0" type="slide"/>
             <joint name="OBJTy" pos="0 0 0" axis="0 1 0" type="slide"/>
             <joint name="OBJTz" pos="0 0 0" axis="0 0 1" type="slide"/>
