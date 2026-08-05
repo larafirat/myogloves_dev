@@ -226,6 +226,22 @@ OBJECT_FRICTION = list(MYOASSIST_FRICTION)
 # So glove grip belongs on the glove. Set GLOVE_FRICTION above the object's to
 # model a gripping glove surface; leave it None to run bare-hand contact at the
 # reference value. This keeps the object identical to myoMPL's in every run.
+# DECISION (researched, see friction_sensitivity_results.txt): stays None.
+# Every condition -- healthy hand and all five devices -- therefore contacts
+# the object at the identical reference value, so any difference between them
+# is attributable to the mechanism and not to fabric. Two reasons:
+#   No device publishes a friction coefficient. Only D3 names a material ("a
+#   latex glove for friction") and D4 gives a direction (users wanted "more
+#   grip"), and those point opposite ways. Five per-device numbers from two
+#   partial hints would be invention, not fidelity.
+#   Friction reorders the ranking on curved objects, so it is a confound to be
+#   controlled rather than a device property to vary. Swept 1.0-2.5 on the can,
+#   Tyrone leads at 1.5 (90% survival vs D4's 70%) and D4 leads at 2.0 (100%
+#   vs Tyrone's 20%). On the box it changes nothing at all, because flat faces
+#   let a grasp cage the object geometrically.
+# LIMITATION to state in any write-up: this models every device as
+# frictionally equal to bare skin. D3's latex glove is the one documented
+# deviation, and correcting it would only help D3.
 GLOVE_FRICTION = None
 # Substrings of body names that are scenery, not hand. Everything else in these
 # models is the arm/hand chain and is covered by the glove.
