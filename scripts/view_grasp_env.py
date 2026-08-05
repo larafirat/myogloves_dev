@@ -4,7 +4,7 @@ Prints the obs/reward dict periodically so you can see reach_err shrink and
 touching_body/reward change live alongside the visual.
 
 Usage (must run with mjpython on macOS for the interactive window):
-    mjpython myogloves_dev/scripts/view_grasp_env.py [DEVICE_NAME]
+    mjpython myogloves_dev/scripts/view_grasp_env.py [DEVICE_NAME] [MODEL_PATH]
 
 Defaults to D4_hybrid_per_finger_calibrated if no device name is given.
 """
@@ -15,10 +15,11 @@ import time
 import mujoco.viewer
 import numpy as np
 
-from grasp_env import GraspEnv
+from grasp_env import GraspEnv, MODEL_PATH
 
 device_name = sys.argv[1] if len(sys.argv) > 1 else "D4_hybrid_per_finger_calibrated"
-env = GraspEnv(device_name, seed=0)
+model_path = sys.argv[2] if len(sys.argv) > 2 else None
+env = GraspEnv(device_name, seed=0, model_path=model_path or MODEL_PATH)
 obs = env.reset(randomize=False)
 
 print(f"Viewing {device_name} in GraspEnv (randomized object: "

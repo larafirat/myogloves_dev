@@ -204,10 +204,71 @@
                               <site name="EPB-P5" pos="0.0312 0.0026 -0.0033"/>
                               <!-- <site name="FPL-P5" pos="0.0179 0.0064 -0.0168"/> -->
                               <site name="FPL-P5" pos="0.0187 0.0088 -0.0155"></site>
+                              <!-- Extra thumb (Gerez et al. 2020's actual device: a SEPARATE, pneumatically
+                                   inflated telescopic appendage mounted near the palm, driven by its own
+                                   dedicated air pump -- NOT an extension of the anatomical thumb, which is
+                                   what an earlier attempt here wrongly assumed. Table 1: 80mm long, 10mm
+                                   thick, 18g. Mounted on capitate (a stable, central palm bone) rather than
+                                   on the thumb itself, matching the paper's images showing it emerging near
+                                   the base of the palm as a distinct, sixth-digit-like structure (the paper
+                                   cites prior "extra robotic finger" work, refs [50],[51], for this design
+                                   lineage). Axis: computed from capitate's position toward the measured
+                                   fingertip-convergence centroid (~(-0.15,-0.46,1.35) established earlier
+                                   this session) -- the resulting required distance (90mm) landed remarkably
+                                   close to the paper's own 80mm length, which is a real, if coincidental,
+                                   sanity check that this placement is physically reasonable. -->
+                              <!-- Fixed anchor site for the extra_thumb spatial tendon (see
+                                   myohand_exoglove.xml/_env.xml <tendon>): a capsule geom rigidly
+                                   attached to the sliding body can't change VISIBLE LENGTH as qpos
+                                   grows, only translate -- so it either looks detached-from-the-palm
+                                   when extended, or juts out oddly when retracted (tried both, both
+                                   wrong). A spatial tendon between this fixed site and a site on the
+                                   moving body renders as a tube whose length actually tracks qpos:
+                                   ~0 (invisible) at rest, growing to 80mm at full extension -- the
+                                   correct telescoping/inflating visual, and zero physics effect since
+                                   no stiffness/actuator is attached to it. -->
+                              <site name="extra_thumb_base_site" pos="0 0 0" size="0.001"/>
+                              <body name="extra_thumb" pos="0 0 0">
+                                <!-- stiffness/springref added after finding this joint has no
+                                     return force: for devices that DON'T drive this channel (K row
+                                     all zero), gravity has a component along this axis and passively
+                                     extends it to the range limit within ~0.3s regardless -- a real
+                                     pneumatic actuator deflates/retracts when not inflated (the paper
+                                     itself notes "when not inflated, the telescopic actuator does not
+                                     affect the grasping of objects"), so a spring pulling it back to
+                                     qpos=0 is the correct passive behavior, not a free-hanging mass. -->
+                                <joint name="extra_thumb" type="slide"
+                                       axis="-0.7946 0.0170 -0.6069"
+                                       range="0 0.08" damping="4.0" stiffness="150" springref="0"
+                                       solreflimit="0.001 1" solimplimit="0.95 0.99 0.001"/>
+                                <!-- TRIED AND REVERTED: a flat box pad (matching the paper's "increases the
+                                     AREA of the contact patches" explanation) measured WORSE than this thin
+                                     capsule -- rotation onset 43.9deg at 0.2s vs 13.7deg here, both with
+                                     identical ease-off behavior. The box's specific orientation apparently
+                                     lands its contact at a subtly worse point/moment than the capsule's,
+                                     which matters more in this still-marginal setup than the contact area
+                                     itself does. Area alone isn't the mechanism here (yet) -- reverted rather
+                                     than keep a paper-literal change that empirically performs worse. -->
+                                <site name="extra_thumb_tip_site" pos="0 0 0" size="0.001"/>
+                                <!-- Small rounded pad at the tip only -- the SHAFT itself is now the
+                                     spatial tendon (extra_thumb_base_site -> extra_thumb_tip_site), not
+                                     this geom. material="" overrides the "skin" class's inherited
+                                     MatSkin (skin-tone), which silently overrode this geom's own rgba.
+                                     group="0" overrides the "skin" class's group="4" (hidden by
+                                     default in the viewer -- same visibility fix device_d1's class
+                                     already uses). Bright pink per explicit request. -->
+                                <geom name="extra_thumb_tip" class="skin" type="sphere" size="0.009" material="" group="0"
+                                      pos="0 0 0" rgba="1.0 0.1 0.7 1"/>
+                                <inertial pos="-0.008 0.0002 -0.006" mass="0.018" diaginertia="1e-08 1e-08 1e-08"/>
+                              </body>
                               <body name="trapezium" pos="0.015293 -0.004569 -0.010308">
                                 <geom mesh="trapezium" name="trapezium" type="mesh"/>
                                 <inertial pos="0 0 0" mass="0.02" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                 <geom name="Trpzm_wrap" pos="0.002 -0.003 0" quat="0.708942 0.660448 0.181023 0.16864" class="wrap" size="0.011"/>
+                                <!-- Fixed anchor for the extra_thumb_v2 spatial tendon -- placed at the
+                                     same offset as extra_thumb_v2's own mount pos so tendon length is
+                                     ~0 (invisible) when the joint is at rest. -->
+                                <site name="extra_thumb_v2_base_site" pos="-0.006 -0.003 0.012" size="0.001"/>
                                 <site name="EPL-P7" pos="0.0081 -0.0046 0.0099"/>
                                 <site name="OP-P1" pos="-0.011 -0.005 -0.004"/>
                                 <site name="Trpzm_site_FPL_side" pos="0.0125474 -0.0222585 0.00136571"/>
@@ -220,6 +281,59 @@
 
                                 <!-- ======= target site 2 ======= -->
                                 <site name="target2_site" type="sphere" size="0.007" rgba=".84 .59 .53 1" group="3" pos=".005 -.1 -.02"/>
+
+                                <!-- Extra thumb v2: redesigned mount/axis after the first version (on
+                                     capitate, aimed at the fingertip-convergence centroid) looked visually
+                                     disconnected -- it shot out sideways from the wrist, nothing like the
+                                     paper's own Fig. 3 photo, where the inflated extra thumb clearly emerges
+                                     from the base of the palm near the thumb and extends FORWARD, roughly
+                                     alongside the four fingers (so it can curl up from underneath/behind
+                                     the object, not poke out to the side). Mounted on trapezium instead of
+                                     capitate: it's the thumb's own carpal bone (closer to where the paper's
+                                     photo shows it attaching) but has no joint of its own (firstmc, its
+                                     child, carries cmc_abduction/cmc_flexion), so this stays independent of
+                                     the anatomical thumb's motion, matching the paper's separate-actuator
+                                     description. Axis computed from trapezium's position toward the OPEN-
+                                     hand fingertip position (not the closed-fist convergence point used for
+                                     v1) -- that's the direction the paper's photo shows it extending in,
+                                     roughly parallel to the fingers, not into wherever the fist eventually
+                                     closes to. -->
+                                <!-- Mount re-tuned: the previous offset (-0.018,-0.006,-0.016) measured
+                                     only ~2.9cm from firstmc and sat almost exactly at thirdmc's (middle
+                                     finger base) height/depth -- read as part of the middle finger, not a
+                                     distinct sixth digit (user-reported: "misplaced, detached, in the
+                                     position of the middle finger"). Pushed toward the radial/dorsal side
+                                     (away from the finger cluster, +Z instead of -Z) for a visually
+                                     distinct origin point.
+
+                                     Axis: root-caused a real bug across several earlier attempts here --
+                                     a joint's axis is in its PARENT body's (trapezium's) LOCAL frame, and
+                                     trapezium's rotation relative to world is NOT close to identity
+                                     (confirmed via data.xmat: roughly swaps/negates X and Z). Using a
+                                     world-frame direction vector directly as the local axis pointed the
+                                     shaft in the wrong world direction entirely, so it either missed the
+                                     80mm range or converged to within only ~6cm of the object and no
+                                     closer, never locking. Correct derivation: world_dir = normalize(
+                                     object_xpos - mount_xpos) via a live sim query, then
+                                     axis_local = normalize(R_trapezium^T @ world_dir) using trapezium's
+                                     actual data.xmat, so R_trapezium @ axis_local recovers world_dir. -->
+                                <body name="extra_thumb_v2" pos="-0.006 -0.003 0.012">
+                                  <joint name="extra_thumb_v2" type="slide"
+                                         axis="-0.65301539 -0.31174198 -0.69020854"
+                                         range="0 0.08" damping="4.0" stiffness="150" springref="0"
+                                         solreflimit="0.001 1" solimplimit="0.95 0.99 0.001"/>
+                                  <!-- Same tendon-shaft fix as extra_thumb (see its comment on
+                                       extra_thumb_base_site): a rigidly-translating capsule can't grow
+                                       in length, so it either detaches from the mount when extended or
+                                       juts out oddly at rest -- replaced with a spatial tendon between
+                                       extra_thumb_v2_base_site (fixed, on trapezium, at this body's own
+                                       mount offset so length=0 at qpos=0) and this tip site, plus a
+                                       small tip pad geom. -->
+                                  <site name="extra_thumb_v2_tip_site" pos="0 0 0" size="0.001"/>
+                                  <geom name="extra_thumb_v2_tip" class="skin" type="sphere" size="0.009" material="" group="0"
+                                        pos="0 0 0" rgba="0.3 1.0 0.2 1"/>
+                                  <inertial pos="0.0013 -0.0122 0.0026" mass="0.018" diaginertia="1e-08 1e-08 1e-08"/>
+                                </body>
 
                                 <!-- THUMB FINGER -->
                                 <body name="firstmc" pos="0.0072 -0.0054 -0.0025">
@@ -564,6 +678,7 @@
                                   <joint axis="-0.434966 0 0.900447" name="mcp4_abduction" pos="0 0 0" range="-0.261799 0.261799"/>
                                   <geom class="skin" size="0.0085 0.018" pos="-.001 -0.0200 .0008" euler="1.57 -.08 0"/>
                                   <geom mesh="4proxph" name="4proxph" type="mesh"/>
+                                  <geom name="d1_cuff_mcp4" class="device_d1" type="capsule" size="0.0102 0.007" pos="-.001 -0.0200 .0008" euler="1.57 -.08 0"/>
                                   <inertial pos="0 0 0" mass="0.01" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                   <!-- <geom name="Fourthpm_wrap" pos="-0.0033 -0.0401 -0.0001" quat="0.35623 -0.660837 -0.527455 0.397727" class="wrap" size="0.004 0.005" type="cylinder"/> -->
                                   <geom name="Fourthpm_wrap" type="cylinder" size="0.00400000 0.005" pos="-0.0033 -0.0401 -0.0001" euler="-3.02291026 -1.12311937 -1.27251956" class="wrap"/>
@@ -596,6 +711,7 @@
                                     <joint axis="0.921061 0 0.389418" name="pm4_flexion" pos="0 0 0" range="0 1.5708"/>
                                     <geom class="skin" size="0.0075 0.01" pos="-.00 -0.012 -.001" euler="1.58 -.08 0"/>
                                     <geom mesh="4midph" name="4midph" type="mesh"/>
+                                    <geom name="d1_cuff_pip4" class="device_d1" type="capsule" size="0.0088 0.0055" pos="-.00 -0.012 -.001" euler="1.58 -.08 0"/>
                                     <geom name="Fourthmd_wrap" type="cylinder" size="0.00300000 0.005" pos="-0.0021 -0.0247 -0.0001" euler="-3.02971705 -1.10287355 -2.87211382" class="wrap"/>
                                     <inertial pos="0 0 0" mass="0.003" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                     <!-- <site name="FDS4-P8" pos="-0.0009 -0.0147 -0.0021"/>
@@ -618,6 +734,7 @@
                                       <joint axis="0.825336 0 0.564642" name="md4_flexion" pos="0 0 0" range="0 1.5708"/>
                                       <geom class="skin" size="0.0068 0.008" pos="0.00 -0.01 -.002" euler="1.6 -.1 0"/>
                                       <geom mesh="4distph" name="4distph" type="mesh"/>
+                                      <geom name="d1_cuff_dip4" class="device_d1" type="capsule" size="0.0080 0.0048" pos="0.00 -0.01 -.002" euler="1.6 -.1 0"/>
                                       <inertial pos="0 0 0" mass="0.002" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                       <site name="FDP4-P10" pos="0.0002 -0.014 -0.0022"/>
                                       <site name="EDC4-P9" pos="-0.001 -0.008 0.003"/>
@@ -660,6 +777,7 @@
                                   <joint axis="-0.564642 0 0.825336" name="mcp5_abduction" pos="0 0 0" range="-0.261799 0.261799"/>
                                   <geom class="skin" size="0.008 0.016" pos="-.003 -0.018 -.002" euler="1.68 -.1 0"/>
                                   <geom mesh="5proxph" name="5proxph" type="mesh"/>
+                                  <geom name="d1_cuff_mcp5" class="device_d1" type="capsule" size="0.0098 0.0065" pos="-.003 -0.018 -.002" euler="1.68 -.1 0"/>
                                   <geom name="Fifthpm_wrap" pos="-0.0046 -0.0349 -0.0042" quat="0.4295 -0.0398509 -0.90052 -0.0548241" class="wrap" size="0.004 0.005" type="cylinder"/>
                                   <inertial pos="0 0 0" mass="0.005" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                   <!-- <site name="FDS5-P6" pos="0.0018 -0.0143 -0.0055"/>
@@ -694,6 +812,7 @@
                                   <joint axis="0.825336 0 0.564642" name="pm5_flexion" pos="0 0 0" range="0 1.5708"/>
                                     <geom class="skin" size="0.007 0.009" pos="-.001 -0.011 -.0025" euler="1.68 -.12 0"/>
                                     <geom mesh="5midph" name="5midph" type="mesh"/>
+                                    <geom name="d1_cuff_pip5" class="device_d1" type="capsule" size="0.0083 0.0052" pos="-.001 -0.011 -.0025" euler="1.68 -.12 0"/>
                                     <geom name="Fifthmd_wrap" pos="-0.0025 -0.0205 -0.0025" quat="0.35929 -0.0253303 -0.929016 -0.0848458" class="wrap" size="0.003 0.005" type="cylinder"/>
                                     <inertial pos="0 0 0" mass="0.002" fullinertia="0.0001 0.0001 0.0001 0 0 0"/>
                                     <site name="FDS5-P8" pos="0.0011 -0.0182 -0.0046"/>
@@ -710,6 +829,7 @@
                                     <joint axis="0.643112 -0.226804 0.731414" name="md5_flexion" pos="0 0 0" range="0 1.5708"/>
                                       <geom class="skin" size="0.006 0.007" pos="-.0002 -0.009 -.002" euler="1.65 -.1 0"/>
                                       <geom mesh="5distph" name="5distph" type="mesh"/>
+                                      <geom name="d1_cuff_dip5" class="device_d1" type="capsule" size="0.0075 0.0044" pos="-.0002 -0.009 -.002" euler="1.65 -.1 0"/>
                                       <inertial pos="0 0 0" mass="0.001" fullinertia="0.0001 0.0001 0.0001 0 0 0"></inertial>
                                       <site name="FDP5-P10" pos="-0.0003 -0.0139 -0.0048"/>
                                       <site name="EDC5-P9" pos="-0.002 -0.007 0"/>

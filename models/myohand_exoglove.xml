@@ -15,5 +15,74 @@
         <include file="assets/myohand_body.xml"/>
     </worldbody>
 
+    <!-- extra_thumb/extra_thumb_v2 (myohand_body.xml) are meant to contact the
+         grasped OBJECT, not the wearer's own fingers -- their mount points sit
+         close enough to the palm/thumb base that their collision capsules
+         intersect other digits' swept closing paths (found via two separate
+         regression failures: cmc_flexion drifting under D1 with no thumb
+         channel at all, and D4's middle finger failing to saturate -- both
+         traced to genuine rigid-body overlap, not a dynamics bug). Excluding
+         these body pairs is more robust than continuing to hand-tune mount
+         offsets against every digit's own closing arc. -->
+    <!-- Visual-only tendons rendering the extra_thumb/extra_thumb_v2 telescoping
+         shafts (see myohand_body.xml's site comments): a capsule geom rigidly
+         attached to the sliding body can only translate, not grow in length, so
+         it either looks detached from the palm when extended or juts out oddly
+         at rest. A spatial tendon between a fixed base site and the moving tip
+         site renders as a tube whose apparent length tracks qpos directly --
+         ~0 (invisible) retracted, ~80mm at full extension -- with zero physics
+         effect since neither tendon has stiffness/damping/an actuator. -->
+    <tendon>
+        <spatial name="extra_thumb_shaft" width="0.006" rgba="1.0 0.1 0.7 1">
+            <site site="extra_thumb_base_site"/>
+            <site site="extra_thumb_tip_site"/>
+        </spatial>
+        <spatial name="extra_thumb_v2_shaft" width="0.006" rgba="0.3 1.0 0.2 1">
+            <site site="extra_thumb_v2_base_site"/>
+            <site site="extra_thumb_v2_tip_site"/>
+        </spatial>
+    </tendon>
+
+    <contact>
+        <exclude body1="extra_thumb" body2="firstmc"/>
+        <exclude body1="extra_thumb" body2="proximal_thumb"/>
+        <exclude body1="extra_thumb" body2="distal_thumb"/>
+        <exclude body1="extra_thumb" body2="secondmc"/>
+        <exclude body1="extra_thumb" body2="proxph2"/>
+        <exclude body1="extra_thumb" body2="midph2"/>
+        <exclude body1="extra_thumb" body2="distph2"/>
+        <exclude body1="extra_thumb" body2="thirdmc"/>
+        <exclude body1="extra_thumb" body2="proxph3"/>
+        <exclude body1="extra_thumb" body2="midph3"/>
+        <exclude body1="extra_thumb" body2="distph3"/>
+        <exclude body1="extra_thumb" body2="fourthmc"/>
+        <exclude body1="extra_thumb" body2="proxph4"/>
+        <exclude body1="extra_thumb" body2="midph4"/>
+        <exclude body1="extra_thumb" body2="distph4"/>
+        <exclude body1="extra_thumb" body2="fifthmc"/>
+        <exclude body1="extra_thumb" body2="proxph5"/>
+        <exclude body1="extra_thumb" body2="midph5"/>
+        <exclude body1="extra_thumb" body2="distph5"/>
+        <exclude body1="extra_thumb_v2" body2="firstmc"/>
+        <exclude body1="extra_thumb_v2" body2="proximal_thumb"/>
+        <exclude body1="extra_thumb_v2" body2="distal_thumb"/>
+        <exclude body1="extra_thumb_v2" body2="secondmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph2"/>
+        <exclude body1="extra_thumb_v2" body2="midph2"/>
+        <exclude body1="extra_thumb_v2" body2="distph2"/>
+        <exclude body1="extra_thumb_v2" body2="thirdmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph3"/>
+        <exclude body1="extra_thumb_v2" body2="midph3"/>
+        <exclude body1="extra_thumb_v2" body2="distph3"/>
+        <exclude body1="extra_thumb_v2" body2="fourthmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph4"/>
+        <exclude body1="extra_thumb_v2" body2="midph4"/>
+        <exclude body1="extra_thumb_v2" body2="distph4"/>
+        <exclude body1="extra_thumb_v2" body2="fifthmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph5"/>
+        <exclude body1="extra_thumb_v2" body2="midph5"/>
+        <exclude body1="extra_thumb_v2" body2="distph5"/>
+    </contact>
+
 </mujoco>
 

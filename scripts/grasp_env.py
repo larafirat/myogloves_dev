@@ -27,6 +27,7 @@ from exo_devices import DEVICES, ExoApplicator, JOINT_NAMES
 from grasp_controller import GraspController
 
 MODEL_PATH = "myogloves_dev/models/myohand_exoglove_env.xml"
+PAPERLIKE_MODEL_PATH = "myogloves_dev/models/myohand_exoglove_env_paperlike.xml"
 
 # Adapted from the paper's 5-category touching_body (myoArm/MPL/start/goal/other):
 # we only have one hand and no goal pillar (not doing bimanual manipulation).
@@ -34,12 +35,14 @@ TOUCH_CATEGORIES = ["hand", "start_pillar", "other"]
 
 
 class GraspEnv:
-    def __init__(self, device_name, seed=None):
+    def __init__(self, device_name, seed=None, model_path=MODEL_PATH, controller_overrides=None):
         self.device_name = device_name
-        self.model = mujoco.MjModel.from_xml_path(MODEL_PATH)
+        self.model_path = model_path
+        self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
         self.applicator = ExoApplicator(self.model)
         self.rng = np.random.default_rng(seed)
+        self.controller_overrides = dict(controller_overrides or {})
 
         self.obj_body_id = self.model.body("grasp_object").id
         self.obj_geom_id = self.model.geom("grasp_object_geom").id
@@ -94,7 +97,9 @@ class GraspEnv:
             self.model.geom_friction[self.obj_geom_id] = self._nominal_friction
 
         mujoco.mj_forward(self.model, self.data)
-        self.controller = GraspController(self.model, self.device, self.obj_geom_id)
+        controller_kwargs = dict(self.device.controller_overrides)
+        controller_kwargs.update(self.controller_overrides)
+        self.controller = GraspController(self.model, self.device, self.obj_geom_id, **controller_kwargs)
         self.t = 0.0
         self.max_contact_force = 0.0
         self.touch_steps = 0

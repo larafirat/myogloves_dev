@@ -56,7 +56,7 @@
             SMALLER than the object and let it tip/rotate off-square (the
             "crooked" object the user saw). Floor is at z=-.4 (myosuite_scene
             "floor" geom). -->
-        <body name="start_pillar" pos="-0.160 -0.490 0.469" mocap="true">
+        <body name="start_pillar" pos="-0.160 -0.490 0.4715" mocap="true">
             <!-- box, not cylinder: box-vs-box is one of MuJoCo's analytic
                 contact pairs; box-vs-cylinder fell back to a soft general
                 convex path that let the object sink ~1.4cm into the pillar
@@ -68,10 +68,13 @@
             started below the fingers' initial closing band, so the hand
             spent its first motion curling into empty space before it could
             make contact. Keeping the base on the floor means both the
-            pillar center and its half-height increase by 1.5cm. -->
-            <geom name="start_pillar_geom" type="box" size="0.06 0.06 0.869" friction="2.5 0.02 0.002" rgba="0.3 0.3 0.35 1"/>
+            pillar center and its half-height increase by 1.5cm. Expanded the
+            top footprint again for ongoing thumb tuning, so the object stays
+            supported while we work on contact behavior instead of repeatedly
+            rolling off the pedestal edge. -->
+            <geom name="start_pillar_geom" type="box" size="0.08 0.08 0.8715" friction="2.5 0.02 0.002" rgba="0.3 0.3 0.35 1"/>
         </body>
-        <body name="grasp_object" pos="-0.160 -0.490 1.382">
+        <body name="grasp_object" pos="-0.160 -0.490 1.387">
             <!-- CENTER kept at the same proven height as the original flat
                 box (1.352) rather than resting the new taller box's bottom
                 on the old pillar height -- that would've raised the center
@@ -85,10 +88,133 @@
                 grasp inside the contact band instead of below it. A further
                 small X/Y nudge toward the hand brings the object closer to
                 the fingers' initial approach path without changing the basic
-                pedestal layout. -->
+                pedestal layout. Raised another 5 mm together with the pillar
+                so the box remains cleanly seated on top instead of visually
+                intersecting the support. -->
             <freejoint/>
             <geom name="grasp_object_geom" type="box" size="0.014 0.036 0.044" mass="0.097" friction="2.5 0.02 0.002" rgba="0.8 0.2 0.2 1"/>
         </body>
+        <!-- extra_thumb_v2's ACTUAL collidable shaft. The joint-driven extra_thumb_v2
+             body only tracks qpos (how far extended) via its own small tip site/geom --
+             a capsule rigidly attached to that translating body can't change length, so
+             it either detaches from the mount when extended or (if rendered as a visual-
+             only spatial tendon instead) passes clean through solid objects that happen
+             to sit between the mount and the tip, since tendons have zero collision. This
+             mocap body's geom is instead resized and repositioned every simulation step
+             (GraspController.step(), see its _update_extra_thumb_shaft) to always span
+             exactly from extra_thumb_v2_base_site to extra_thumb_v2_tip_site -- a REAL
+             capsule with real collision the whole length of the shaft, not just its tip,
+             so it can't be walked through and (per the fixed-opposition-pad diagnostic
+             earlier this project) a line of contact rather than a single point is
+             expected to give more robust opposition, not less. Placeholder pos/size below
+             are overwritten before the first physics step. -->
+        <body name="extra_thumb_v2_shaft_body" mocap="true" pos="0 0 -1">
+            <geom name="extra_thumb_v2_shaft_geom" type="capsule" size="0.012 0.04" rgba="0.3 1.0 0.2 1"
+                  friction="2.5 0.02 0.002"/>
+        </body>
     </worldbody>
+
+    <!-- See myohand_exoglove.xml for why: extra_thumb/extra_thumb_v2 are meant to
+         contact the grasped OBJECT, not the wearer's own other fingers, whose
+         closing paths their palm-adjacent mount points otherwise intersect. -->
+    <!-- Visual-only tendons rendering the extra_thumb/extra_thumb_v2 telescoping
+         shafts -- see myohand_exoglove.xml's comment (identical rationale) and
+         myohand_body.xml's site comments. Zero physics effect (no stiffness/
+         damping/actuator on either tendon). -->
+    <tendon>
+        <spatial name="extra_thumb_shaft" width="0.006" rgba="1.0 0.1 0.7 1">
+            <site site="extra_thumb_base_site"/>
+            <site site="extra_thumb_tip_site"/>
+        </spatial>
+        <spatial name="extra_thumb_v2_shaft" width="0.006" rgba="0.3 1.0 0.2 1">
+            <site site="extra_thumb_v2_base_site"/>
+            <site site="extra_thumb_v2_tip_site"/>
+        </spatial>
+    </tendon>
+
+    <contact>
+        <exclude body1="extra_thumb" body2="firstmc"/>
+        <exclude body1="extra_thumb" body2="proximal_thumb"/>
+        <exclude body1="extra_thumb" body2="distal_thumb"/>
+        <exclude body1="extra_thumb" body2="secondmc"/>
+        <exclude body1="extra_thumb" body2="proxph2"/>
+        <exclude body1="extra_thumb" body2="midph2"/>
+        <exclude body1="extra_thumb" body2="distph2"/>
+        <exclude body1="extra_thumb" body2="thirdmc"/>
+        <exclude body1="extra_thumb" body2="proxph3"/>
+        <exclude body1="extra_thumb" body2="midph3"/>
+        <exclude body1="extra_thumb" body2="distph3"/>
+        <exclude body1="extra_thumb" body2="fourthmc"/>
+        <exclude body1="extra_thumb" body2="proxph4"/>
+        <exclude body1="extra_thumb" body2="midph4"/>
+        <exclude body1="extra_thumb" body2="distph4"/>
+        <exclude body1="extra_thumb" body2="fifthmc"/>
+        <exclude body1="extra_thumb" body2="proxph5"/>
+        <exclude body1="extra_thumb" body2="midph5"/>
+        <exclude body1="extra_thumb" body2="distph5"/>
+        <exclude body1="extra_thumb_v2" body2="firstmc"/>
+        <exclude body1="extra_thumb_v2" body2="proximal_thumb"/>
+        <exclude body1="extra_thumb_v2" body2="distal_thumb"/>
+        <exclude body1="extra_thumb_v2" body2="secondmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph2"/>
+        <exclude body1="extra_thumb_v2" body2="midph2"/>
+        <exclude body1="extra_thumb_v2" body2="distph2"/>
+        <exclude body1="extra_thumb_v2" body2="thirdmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph3"/>
+        <exclude body1="extra_thumb_v2" body2="midph3"/>
+        <exclude body1="extra_thumb_v2" body2="distph3"/>
+        <exclude body1="extra_thumb_v2" body2="fourthmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph4"/>
+        <exclude body1="extra_thumb_v2" body2="midph4"/>
+        <exclude body1="extra_thumb_v2" body2="distph4"/>
+        <exclude body1="extra_thumb_v2" body2="fifthmc"/>
+        <exclude body1="extra_thumb_v2" body2="proxph5"/>
+        <exclude body1="extra_thumb_v2" body2="midph5"/>
+        <exclude body1="extra_thumb_v2" body2="distph5"/>
+        <!-- extra_thumb_v2_shaft_body is meant to contact the grasped OBJECT only,
+             not the wearer's own fingers (same rationale as extra_thumb/extra_thumb_v2
+             above). -->
+        <exclude body1="extra_thumb_v2_shaft_body" body2="firstmc"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="proximal_thumb"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="distal_thumb"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="secondmc"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="proxph2"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="midph2"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="distph2"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="thirdmc"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="proxph3"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="midph3"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="distph3"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="fourthmc"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="proxph4"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="midph4"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="distph4"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="fifthmc"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="proxph5"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="midph5"/>
+        <exclude body1="extra_thumb_v2_shaft_body" body2="distph5"/>
+        <!-- Also exclude the pillar/pedestal: the shaft's mount sits close enough to
+             where the object starts that it could otherwise register spurious contact
+             with the support before the object is even engaged. -->
+        <exclude body1="extra_thumb_v2_shaft_body" body2="start_pillar"/>
+        <!-- radius (forearm bone): the shaft can sweep close enough to the wrist to
+             overlap it, generating a persistent spurious contact/force unrelated to
+             grasping anything (found via direct contact-pair tracing: 'radius' showed
+             up touching the shaft at essentially every timestep once locked). -->
+        <exclude body1="extra_thumb_v2_shaft_body" body2="radius"/>
+        <!-- extra_thumb_v2 (the joint body) and extra_thumb_v2_shaft_body ALWAYS
+             coincide at the tip by construction (the shaft's tip endpoint is computed
+             directly from extra_thumb_v2_tip_site, which lives on this same body) --
+             without this exclude, the shaft's capsule and the joint body's own small
+             tip-sphere geom permanently overlap and push against each other every
+             step, injecting a bogus internal force that fights the joint's own
+             dynamics (found the same way as the radius overlap above). -->
+        <exclude body1="extra_thumb_v2_shaft_body" body2="extra_thumb_v2"/>
+        <!-- extra_thumb (the OLD, retained-for-comparison v1 body, capitate-mounted):
+             unrelated appendage, but close enough at rest to spuriously contact the
+             new shaft capsule (found the same way). Two exoskeleton add-ons colliding
+             with each other has no physical meaning either way. -->
+        <exclude body1="extra_thumb_v2_shaft_body" body2="extra_thumb"/>
+    </contact>
 
 </mujoco>
