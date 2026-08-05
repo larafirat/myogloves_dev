@@ -173,16 +173,39 @@ HAND_REF_BODY = "capitate"
 #                 the 0.05 m that was in use when the arm sag was 0.039 m.
 DROP_MODE = "relative"
 T_MAX_DEFAULT = 5.0
-# Soft-tissue damping boost: DISABLED (1.0 = no boost), deliberately.
+# Soft-tissue damping boost: 1.0 (off), and the reasoning below was partly
+# WRONG -- corrected here rather than quietly.
 #
-# It was introduced as a glove_dev-specific fix for a startup transient from
-# the OP pre-shape, and 25x works there because that device drives MuJoCo
-# muscle actuators rated 180-205 N. The K-matrix devices apply ~0.13 N*m --
-# three orders of magnitude smaller -- and 25x damping simply swamps them:
-# measured, D4 goes from 5 digits of contact to ZERO with the boost applied.
-# A "shared" constant that helps one device and disables another is not a
-# fair comparison, and glove_dev is unaffected by removing it (it still
-# reaches 3-4 digits and holds), so it is off for everyone.
+# It was introduced as a glove_dev-specific fix for an OP pre-shape startup
+# transient. It was switched off on the grounds that 25x swamps the K-matrix
+# devices (D4 goes from 5 digits of contact to zero) while "glove_dev is
+# unaffected by removing it". Two errors in that.
+#
+# First, only 25x and 1x were ever compared. Swept properly
+# (damping_sensitivity_results.txt, 10 trials, survival%(grasp%)):
+#     BOX          x1          x5         x10         x25
+#     healthy   90(100)     70( 70)     70( 80)     70( 90)
+#     Tyrone     0(100)    100(100)     80( 90)      0(  0)
+#     D4         0(100)     90(100)     90( 90)      0(  0)
+#     D1         0(100)      0( 70)      0(  0)      0(  0)
+# At 5x, Tyrone AND D4 both go from 0% survival to 90-100%. The choice was
+# never 25-or-nothing; there is a middle where both succeed. Only D1 is hurt
+# throughout.
+#
+# Second, "glove_dev is unaffected" is false at the current friction and
+# placements: removing the boost is the difference between 100% and 0%
+# survival on the box for that device.
+#
+# It stays OFF anyway, for a reason neither of those touches: damping is NOT
+# neutral across conditions. It degrades the healthy hand's grasp rate badly
+# (box 100 -> 70%, can 100 -> 10%) while helping devices hold, so raising it
+# flatters every device relative to the unassisted control. It is a confound
+# of the same kind as friction and has to be justified rather than tuned, and
+# 25x -- or 5x -- of the model's authored joint damping has no anatomical
+# source. 1x is the model as published.
+#
+# CONSEQUENCE for reporting: "no device survives on the box" is a statement
+# about x1, not a robust device property. Quote it with the band.
 HAND_DAMPING_BOOST = 1.0
 
 # Object friction. This repo had been running at [2.5, 0.02, 0.002] with no
