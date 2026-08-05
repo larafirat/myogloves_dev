@@ -24,15 +24,17 @@ import sys
 import hold_benchmark as hb
 
 GRIDS = {
-    # around each object's authored placement
-    "can":  dict(xs=[0.04, 0.06, 0.08], ys=[0.10, 0.12, 0.14], zs=[0.170, 0.185, 0.200]),
-    "tuna": dict(xs=[0.01, 0.03, 0.05], ys=[0.04, 0.06, 0.08], zs=[0.160, 0.180, 0.200]),
+    # around each object's current placement
+    "box":  dict(xs=[0.05, 0.07, 0.09], ys=[0.08, 0.10, 0.12], zs=[0.200, 0.220, 0.240]),
+    "can":  dict(xs=[0.06, 0.08, 0.10], ys=[0.08, 0.10, 0.12], zs=[0.155, 0.170, 0.185]),
+    "tuna": dict(xs=[0.03, 0.05, 0.07], ys=[0.04, 0.06, 0.08], zs=[0.145, 0.160, 0.175]),
 }
+BOTTOM_OFFSET = {"box": -0.044, "can": 0.0, "tuna": 0.0}
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("objects", nargs="*", default=["can", "tuna"])
+    ap.add_argument("objects", nargs="*", default=["box", "can", "tuna"])
     ap.add_argument("--trials", type=int, default=4)
     ap.add_argument("--out", default="myogloves_dev/placement_feasibility.json")
     a = ap.parse_args()
@@ -49,7 +51,12 @@ def main():
             res = [hb.run_trial(ad, seed=2000 + i, t_max=hb.T_MAX_DEFAULT)
                    for i in range(a.trials)]
             s = hb.summarise(res)
-            ranked.append((s["grasp_rate"], s["hold_median"], x, y, z, s["setup_fail"]))
+            # Rank by grasp rate, then PENALISE setup failures: at the
+            # reference friction the object can slide off its support during
+            # settling, which the legacy grip was hiding. A placement that
+            # cannot even hold the object still is not a placement.
+            ranked.append((s["grasp_rate"] - 0.5 * s["setup_fail"] / max(a.trials, 1),
+                           s["hold_median"], x, y, z, s["setup_fail"]))
             print(f"  ({x:.3f},{y:.3f},{z:.3f})  grasp={s['grasp_rate']*100:5.1f}%  "
                   f"hold={s['hold_median']:5.2f}s"
                   + (f"  SETUPFAIL={s['setup_fail']}" if s["setup_fail"] else ""), flush=True)

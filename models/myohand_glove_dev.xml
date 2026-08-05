@@ -299,11 +299,11 @@
              Pillar top must meet the box's bottom face. The -90deg X
              rotation puts the collision box's bottom 0.044 below body_pos.z,
              so pillar top = 0.22 - 0.044 = 0.176 -> half-height 0.088. -->
-        <body name="glove_dev_support_pillar" pos="0.07 0.10 0.088" mocap="true">
+        <body name="glove_dev_support_pillar" pos="0.07 0.08 0.088" mocap="true">
             <geom name="glove_dev_support_pillar_geom" type="box" size="0.08 0.08 0.088" rgba="0.3 0.3 0.35 1"/>
         </body>
 
-        <body name="009_gelatin_box" pos="0.07 0.10 0.22" euler="-1.5708 0 0" childclass="grab">
+        <body name="009_gelatin_box" pos="0.07 0.08 0.22" euler="-1.5708 0 0" childclass="grab">
             <joint name="OBJTx" pos="0 0 0" axis="1 0 0" type="slide"/>
             <joint name="OBJTy" pos="0 0 0" axis="0 1 0" type="slide"/>
             <joint name="OBJTz" pos="0 0 0" axis="0 0 1" type="slide"/>

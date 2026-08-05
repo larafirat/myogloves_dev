@@ -159,6 +159,19 @@ DROP_THRESHOLD_M = 0.05    # object falling this far RELATIVE TO THE HAND counts
 # capitate is the reference: a central carpal bone, so it tracks the palm
 # rather than any one finger, and it does not move when the digits close.
 HAND_REF_BODY = "capitate"
+# Failure can be measured either way; both are defensible and they answer
+# slightly different questions.
+#   "relative" -- displacement of the object in the HAND's frame. Detects slip
+#                 early and is immune to fixture deflection. Right for a
+#                 hold-after-support-removal task.
+#   "absolute" -- displacement in the world, which is what myoMPL uses
+#                 (bimanual_v0.py: done when object z < 0.3 m). That works
+#                 there because their object starts around 1.2 m, so the
+#                 threshold is a ~0.9 m fall -- vastly larger than any fixture
+#                 deflection. Ours starts at 0.17-0.22 m above the floor, so
+#                 the comparable "it hit the floor" threshold is ~0.15 m, not
+#                 the 0.05 m that was in use when the arm sag was 0.039 m.
+DROP_MODE = "relative"
 T_MAX_DEFAULT = 5.0
 # Soft-tissue damping boost: DISABLED (1.0 = no boost), deliberately.
 #
@@ -186,6 +199,34 @@ HAND_DAMPING_BOOST = 1.0
 MYOASSIST_FRICTION = [1.0, 0.005, 0.0001]   # myoMPL default, the comparable setting
 LEGACY_FRICTION = [2.5, 0.02, 0.002]        # what this repo used before the audit
 OBJECT_FRICTION = list(MYOASSIST_FRICTION)
+
+# GLOVE friction, and why it is separate from the object's.
+#
+# The old override raised friction on the OBJECT's geoms. Everything in this
+# model -- the object and all 36 colliding hand geoms -- ships at MuJoCo's
+# default [1.0, 0.005, 0.0001], and with geom_priority 0 everywhere friction
+# combines as the element-wise MAX, so raising the object to 2.5 did raise
+# hand-object grip to 2.5. But it also raised object-PILLAR and object-TABLE
+# friction, which has nothing to do with any device, and it changed the
+# benchmark object itself -- the same YCB box myoMPL uses -- which is exactly
+# the thing that has to stay fixed for the comparison to mean anything.
+#
+# There is a real argument that a glove grips better than 1.0, and it is
+# device-side rather than object-side. myoMPL's hand is an MPL: a rigid
+# prosthetic with metal/plastic surfaces (condim=6, matmetal), so 1.0 is a
+# reasonable bare-hardware value there. An exoskeleton glove is worn OVER the
+# hand, so the object contacts fabric or silicone. The device papers say so
+# directly:
+#   D3 (Thimabut 2022) splints the thumb "plus a latex glove for friction" --
+#     high-friction material specified as part of the device.
+#   D4 (Gerez 2020) subjects reported the device "could be improved by adding
+#     more grip to the glove" -- grip is a stated design parameter, and that
+#     device had less than its users wanted.
+#
+# So glove grip belongs on the glove. Set GLOVE_FRICTION above the object's to
+# model a gripping glove surface; leave it None to run bare-hand contact at the
+# reference value. This keeps the object identical to myoMPL's in every run.
+GLOVE_FRICTION = None
 
 # Randomisation per trial (small perturbations, per the spec).
 # NOTE myoMPL randomises considerably harder: mass +-50 g (not +-2%), object
@@ -466,6 +507,12 @@ class GloveDevAdapter(Adapter):
         for g in range(m.ngeom):
             if m.geom_bodyid[g] == oid:
                 m.geom_friction[g] = OBJECT_FRICTION
+        if GLOVE_FRICTION is not None and self.wears_device:
+            # Device side only: the hand/glove geoms, never the object, the
+            # pillar or the table. See GLOVE_FRICTION.
+            for g in range(m.ngeom):
+                if m.geom_bodyid[g] != oid and m.geom_contype[g]:
+                    m.geom_friction[g] = GLOVE_FRICTION
 
         # Placement override (device-neutral placement studies). Set body_pos
         # directly rather than offsetting the OBJT* slides: those joint axes
@@ -1056,7 +1103,7 @@ def run_trial(adapter, seed, t_max, mass_override=None):
 
     # --- remove support; t=0 for the hold clock ----------------------------
     adapter.release_support(m, d)
-    href = _hand_ref(m)
+    href = _hand_ref(m) if DROP_MODE == "relative" else None
     def _rel_z():
         return float(d.xpos[adapter.oid][2]) - (float(d.xpos[href][2]) if href is not None else 0.0)
     release_z = _rel_z()
