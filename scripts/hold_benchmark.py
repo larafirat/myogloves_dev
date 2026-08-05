@@ -172,7 +172,27 @@ T_MAX_DEFAULT = 5.0
 # reaches 3-4 digits and holds), so it is off for everyone.
 HAND_DAMPING_BOOST = 1.0
 
+# Object friction. This repo had been running at [2.5, 0.02, 0.002] with no
+# recorded justification -- 2.5x the sliding, 4x the torsional and 20x the
+# rolling friction of the value MyoAssist uses for the SAME object.
+#
+# myoMPL (Tan et al., MyoAssist 0.1, ICORR 2025) manipulates YCB
+# 009_gelatin_box at 97 g, which is exactly the box here -- its
+# myoarm_bionic_bimanual.xml includes the same body_009_gelatin_box.xml. Its
+# friction is [1.0, 0.005, 0.0001] sliding/torsional/rolling, stated in the
+# paper and confirmed in the model file. Running grippier than the reference
+# environment makes every grasp here easier than the published benchmark and
+# is not a difference any device earned.
+MYOASSIST_FRICTION = [1.0, 0.005, 0.0001]   # myoMPL default, the comparable setting
+LEGACY_FRICTION = [2.5, 0.02, 0.002]        # what this repo used before the audit
+OBJECT_FRICTION = list(MYOASSIST_FRICTION)
+
 # Randomisation per trial (small perturbations, per the spec).
+# NOTE myoMPL randomises considerably harder: mass +-50 g (not +-2%), object
+# dimensions +-0-5% width / 0-10% depth / 0-5% height, and friction +-0.1 /
+# +-0.001 / +-0.00002. Its baseline drops from ~25% to ~3% success once those
+# are switched on, so the gap between our randomisation and theirs is large
+# enough to matter for any cross-paper comparison.
 POS_JITTER_M = 0.003
 MASS_JITTER_FRAC = 0.02
 
@@ -445,7 +465,7 @@ class GloveDevAdapter(Adapter):
         m.body_iquat[oid] = [1, 0, 0, 0]
         for g in range(m.ngeom):
             if m.geom_bodyid[g] == oid:
-                m.geom_friction[g] = [2.5, 0.02, 0.002]
+                m.geom_friction[g] = OBJECT_FRICTION
 
         # Placement override (device-neutral placement studies). Set body_pos
         # directly rather than offsetting the OBJT* slides: those joint axes
@@ -1217,6 +1237,9 @@ def main():
     ap.add_argument("--tmax", type=float, default=T_MAX_DEFAULT)
     ap.add_argument("--masses", default="")
     ap.add_argument("--out", default="")
+    ap.add_argument("--friction", default="myoassist",
+                    choices=["myoassist", "legacy"],
+                    help="object friction: myoassist [1.0,0.005,0.0001] or legacy [2.5,0.02,0.002]")
     ap.add_argument("--strap", type=float, default=None,
                     help="series-elastic transmission stiffness N*m/rad "
                          "(0 = ideal; 0.1 = best fit to Zhao et al.)")
@@ -1225,6 +1248,9 @@ def main():
     ap.add_argument("--zs", default="")
     a = ap.parse_args()
 
+    global OBJECT_FRICTION
+    OBJECT_FRICTION = list(LEGACY_FRICTION if a.friction == 'legacy' else MYOASSIST_FRICTION)
+    print(f'object friction: {OBJECT_FRICTION}  ({a.friction})')
     if a.strap is not None:
         global STRAP_STIFFNESS
         STRAP_STIFFNESS = a.strap
