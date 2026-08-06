@@ -208,6 +208,41 @@ T_MAX_DEFAULT = 5.0
 # about x1, not a robust device property. Quote it with the band.
 HAND_DAMPING_BOOST = 1.0
 
+# Servo-arm stiffness, as a multiple of the model's authored arm kp.
+#
+# The arm is a FIXTURE, not a device. Tyrone's original design file mounts the
+# hand directly (it includes myohand_tabletop_dev.xml, with the object at
+# pos="0 0 0.035" in the hand's own frame) -- there is no arm at all. myoMPL
+# likewise states "the torso and lower limbs are fixed at the center of a round
+# stage". Ours interposes a 6-DOF position servo so the hand can be posed over
+# the table, and that servo is compliant: it sags 39 mm when the support is
+# removed, and it can absorb energy out of a grasp.
+#
+# Because it is a fixture shared by every condition and absent from both
+# reference setups, stiffening it is not a fairness question the way damping or
+# friction are -- it only has to hold the hand still. This constant exists so
+# that choice is explicit and sweepable rather than an 8.0 buried in build().
+#
+# SWEPT (arm_stiffness_results.txt, 10 trials, survival%(grasp%) | hold):
+#     BOX            x8            x40           x200
+#     healthy    90(100) 5.00s  100(100) 5.00s   UNSTABLE
+#     Tyrone      0(100) 1.85s    0(100) 1.97s   UNSTABLE
+#     D1          0(100) 1.38s    0(100) 1.43s   UNSTABLE
+#     D4          0(100) 0.80s    0(100) 1.29s   UNSTABLE
+#
+# RESULT: arm compliance is NOT what costs glove_dev. Stiffening 5x leaves it
+# at 0% survival and barely moves its hold (1.85 -> 1.97 s). It helps the
+# healthy hand (90 -> 100%) and D4 (0.80 -> 1.29 s) instead. So the sag is a
+# measurement artifact -- already fixed by measuring drop in the hand frame --
+# and not an energy sink robbing the grasp. Hypothesis rejected.
+#
+# x200 is numerically UNSTABLE (NaN in QACC at DOF 1 by t=0.034 s): kp that
+# high is stiff relative to the 2 ms timestep. A genuinely rigid mount would
+# need the arm joints removed rather than the gain raised, which is why this
+# stays at 8.0 -- 40 is defensible too, but it changes healthy and D4 while
+# leaving the device ordering intact, so it buys nothing.
+ARM_STIFF_BOOST = 8.0
+
 # Object friction. This repo had been running at [2.5, 0.02, 0.002] with no
 # recorded justification -- 2.5x the sliding, 4x the torsional and 20x the
 # rolling friction of the value MyoAssist uses for the SAME object.
@@ -587,7 +622,7 @@ class GloveDevAdapter(Adapter):
         boost_hand_damping(m, set(self.ARM_JOINTS), skip_bodies={oid})
         for j in self.ARM_JOINTS:
             a = m.actuator(f"A_{j}").id
-            kp = self.ARM_KP[j] * 8.0
+            kp = self.ARM_KP[j] * ARM_STIFF_BOOST
             m.actuator_gainprm[a][0] = kp
             m.actuator_biasprm[a][1] = -kp
             m.actuator_biasprm[a][2] = -kp * 0.3

@@ -1,0 +1,12 @@
+=== BOX   survival%(grasp%) | hold_med
+                     arm kp x8            arm kp x40           arm kp x200
+healthy      90%(100)  5.00s    100%(100)  5.00s      0%(  0)  0.00s
+Tyrone        0%(100)  1.85s      0%(100)  1.97s      0%(  0)  0.00s
+D1            0%(100)  1.38s      0%(100)  1.43s      0%(  0)  0.00s
+D4            0%(100)  0.80s      0%(100)  1.29s      0%(  0)  0.00s
+=== CAN   survival%(grasp%) | hold_med
+                     arm kp x8            arm kp x40           arm kp x200
+healthy       0%(100)  1.21s      0%(100)  1.49s      0%(  0)  0.00s
+Tyrone        0%(100)  2.58s      0%( 90)  1.09s      0%(  0)  0.00s
+D1            0%(100)  0.40s      0%(100)  0.27s      0%(  0)  0.00s
+D4           10%(100)  0.66s      0%(100)  0.63s      0%(  0)  0.00s
