@@ -344,6 +344,110 @@ LIVE_MOMENT_ARMS = False
 # everything -- but that is a change to how every device is driven, not a bug
 # fix, and it belongs to whoever writes this up.
 GLOVE_DEV_HOLD_FRACTION = None   # None = open loop, as shipped
+
+# ---------------------------------------------------------------------------
+# FORCE-BASED EASE-OFF -- the device-neutral replacement for both of the tuned
+# hold fractions above (glove_dev's and GraspController's 0.15).
+#
+# THE PROBLEM WITH FRACTIONS. "Ease off to 15% of commanded input" is not the
+# same instruction for a 205 N muscle and a 0.13 N*m torque, so a shared
+# fraction is not a shared reflex. Measured: at 0.15 glove_dev cannot even
+# gate (box 47% grasp, can 0%) while the K-matrix devices gate fine. Any fixed
+# fraction therefore has to be tuned per device, and a per-device tuned
+# constant is exactly what a comparison must not contain.
+#
+# THE TARGET. Every device instead regulates to the same CONTACT FORCE, set by
+# the physics of not dropping the object rather than by taste:
+#
+#     F_target = (m * g / mu) * SAFETY
+#
+# m*g/mu is the minimum total normal force whose friction can carry the weight.
+# SAFETY is the margin above slip. Johansson & Westling (1984) measured that
+# humans hold at roughly 10-40% above their slip threshold, so 1.4 sits at the
+# top of the observed human range -- deliberately, since these are impaired
+# hands with an assistive device rather than intact sensorimotor control.
+#
+# This is the same reflex GraspController's slip_gain already claims to model,
+# just with the setpoint made explicit and shared instead of implied by a
+# per-device fraction. It needs no per-device tuning: a stronger device simply
+# reaches the same force at lower activation.
+# MEASURED (grip_regulation_results.txt). Peak total normal force applied by
+# an open-loop grasp, against the physics target:
+#     glove_dev / box   target  1.33 N   applied  64.7 N   49x
+#     glove_dev / can   target  4.79 N   applied  77.3 N   16x
+#     D4        / can   target  4.79 N   applied  12.6 N    3x
+# So the K-matrix devices grip at roughly the right order of magnitude and
+# glove_dev over-grips by one to two orders. The classical "just above slip"
+# setpoint is far below what any of these grasps use, because total normal
+# force counts internal squeeze that cancels rather than net load-bearing
+# force -- these grasps hold by crushing, not by efficient force closure.
+#
+# Sweeping the margin on glove_dev/can finds a real optimum, not a monotone:
+#     margin  1.4 ->   4.8 N    0% survival, 0.73 s
+#     margin  5.0 ->  17.1 N   75% survival, 5.00 s   <- best
+#     margin 20.0 ->  68.5 N    0% survival, 2.75 s
+#     margin 50+  -> saturates, no further change
+# Too little grip and it slips; too much and it ejects the object.
+#
+# BUT MARGIN 5 DOES NOT GENERALISE, which is why this stays off. Validated
+# across three objects and five conditions, it changes essentially nothing
+# except the case it was fitted on:
+#     CAN   Tyrone 0% -> 67%      everyone else unchanged
+#     TUNA  D2    17% -> 33%      Tyrone still cannot grasp it
+#     BOX   nothing improves; D4 gets slightly worse
+# The mechanism explains it: the regulator only binds on a device that
+# over-grips, and only glove_dev does. That makes it an accurate DIAGNOSIS of
+# glove_dev rather than a general control improvement, and adopting a constant
+# fitted on the one condition it helps would be tuning to outcome.
+#
+# THE FINDING, which stands on its own: glove_dev's weakness on curved objects
+# is over-gripping, not lack of capability. Regulated to a sane grip force it
+# reaches 67% survival on the can where the healthy hand manages 0%.
+FORCE_EASE_OFF = False       # off by default -- diagnostic, not adopted
+GRIP_SAFETY_MARGIN = 1.4     # Johansson & Westling: humans hold 10-40% above slip
+GRIP_GAIN = 0.6              # closed-loop rate, in units of u per unit relative error
+
+
+class GripForceRegulator:
+    """Regulates commanded input so total digit-on-object normal force tracks
+    F_target. Shared by every adapter, so all devices are controlled alike."""
+
+    def __init__(self, model, adapter, mass):
+        self.obj_geoms = set(adapter.obj_geoms)
+        self.digit_bodies = {b for ids in adapter.digit_ids.values() for b in ids}
+        mu = float(model.geom_friction[list(self.obj_geoms)[0]][0])
+        self.target = (mass * 9.81 / max(mu, 1e-6)) * GRIP_SAFETY_MARGIN
+        self.u = 0.0
+        self.latched = False
+        self._ft = np.zeros(6)
+
+    def measure(self, model, data):
+        total = 0.0
+        for i in range(data.ncon):
+            c = data.contact[i]
+            if c.geom1 in self.obj_geoms:
+                other = model.geom_bodyid[c.geom2]
+            elif c.geom2 in self.obj_geoms:
+                other = model.geom_bodyid[c.geom1]
+            else:
+                continue
+            if other in self.digit_bodies:
+                mujoco.mj_contactForce(model, data, i, self._ft)
+                total += abs(float(self._ft[0]))
+        return total
+
+    def step(self, model, data, u_ramp):
+        """Ramp openly until the digits are loaded, then regulate to target."""
+        f = self.measure(model, data)
+        if not self.latched:
+            if f < self.target:
+                self.u = u_ramp
+                return u_ramp
+            self.latched = True          # first time the target is reached
+            self.u = u_ramp
+        err = (self.target - f) / self.target
+        self.u = float(np.clip(self.u + GRIP_GAIN * err * 0.002 / 0.002 * 0.01, 0.0, 1.0))
+        return self.u
 GLOVE_DEV_SLIP_GAIN = 0.01       # regain grip if the object creeps once held
 
 # Which natural tendon supplies the live arm for each driven joint.
@@ -818,6 +922,7 @@ class GloveDevAdapter(Adapter):
         self._latched = False; self._held_u = 0.0
         self._anchor = d.xpos[oid].copy()
         self._digit_body_ids = {b for ids in self.digit_ids.values() for b in ids}
+        self.grip = GripForceRegulator(m, self, mass) if FORCE_EASE_OFF else None
         self._build_strap(m)
         return m, d
 
@@ -837,7 +942,9 @@ class GloveDevAdapter(Adapter):
             self.strap = StrapTransmission(model, sorted(driven), STRAP_STIFFNESS)
 
     def set_input(self, model, data, u):
-        if GLOVE_DEV_HOLD_FRACTION is not None:
+        if getattr(self, "grip", None) is not None:
+            u = self.grip.step(model, data, u)
+        elif GLOVE_DEV_HOLD_FRACTION is not None:
             u = self._modulate(model, data, u)
         data.ctrl[self.flex] = u
         data.ctrl[self.thumb] = u
@@ -1159,6 +1266,10 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
         data.ctrl[self.flex] = 0.0
         data.ctrl[self.thumb] = 0.0
         u_dev = self.controller.step(model, data)
+        if getattr(self, "grip", None) is not None:
+            # The force target caps the device's own ramp, so both families
+            # end up regulating to the same contact force.
+            u_dev = np.minimum(u_dev, self.grip.step(model, data, u))
         tau = self.device.torque(u_dev)
         if self.controller.row_gate is not None:
             tau = tau * self.controller.row_gate

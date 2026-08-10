@@ -1,0 +1,31 @@
+glove_dev_can                            target   4.79 N   actual peak     77.3 N   ratio     16x
+portOP_D4_v2_hybrid_per_finger_calibra   target   4.79 N   actual peak     12.6 N   ratio      3x
+glove_dev_box                            target   1.33 N   actual peak     64.7 N   ratio     49x
+sweeping the safety margin (can, glove_dev, 8 trials):
+   margin   1.4 -> target    4.8 N   surv=    0% grasp=  100% hold= 0.73s
+   margin   5.0 -> target   17.1 N   surv=   75% grasp=  100% hold= 5.00s
+   margin  20.0 -> target   68.5 N   surv=    0% grasp=  100% hold= 2.75s
+   margin  50.0 -> target  171.2 N   surv=    0% grasp=  100% hold= 2.77s
+   margin 100.0 -> target  342.4 N   surv=    0% grasp=  100% hold= 2.77s
+
+=== BOX   survival%(grasp%) | hold_med   12 trials
+                         open loop          force ease-off
+healthy          92%(100)  5.00s       92%(100)  5.00s
+Tyrone            0%(100)  1.81s        0%(100)  1.68s
+D1                0%( 92)  1.38s        0%( 92)  1.38s
+D2                0%(100)  0.88s        0%(100)  0.90s
+D4                0%(100)  0.82s        0%(100)  0.64s
+=== CAN   survival%(grasp%) | hold_med   12 trials
+                         open loop          force ease-off
+healthy           0%(100)  1.44s        0%(100)  1.44s
+Tyrone            0%(100)  2.77s       67%(100)  5.00s
+D1                0%(100)  0.39s        0%(100)  0.40s
+D2                0%(100)  0.20s        0%(100)  0.20s
+D4                8%(100)  0.65s        8%(100)  0.65s
+=== TUNA   survival%(grasp%) | hold_med   12 trials
+                         open loop          force ease-off
+healthy          67%( 67)  5.00s       67%( 67)  5.00s
+Tyrone            0%(  0)  0.00s        0%(  0)  0.00s
+D1                0%( 67)  0.12s        0%( 67)  0.13s
+D2               17%( 83)  1.82s       33%( 83)  3.16s
+D4                0%(  0)  0.00s        0%(  0)  0.00s
