@@ -283,6 +283,50 @@ ARM_STIFF_BOOST = 8.0
 # instead, and available for anyone re-deriving the K matrices from scratch.
 LIVE_MOMENT_ARMS = False
 
+# Contact force modulation for glove_dev, mirroring what every K-matrix device
+# already gets from GraspController (ease-off on contact + slip reflex).
+#
+# WHY THIS IS NOT A DEVICE CHANGE. GraspController is OUR controller; it is not
+# part of D1-D4's published designs either. Running glove_dev open-loop while
+# every other device gets contact modulation is a harness asymmetry, not a
+# design difference. This restores symmetry without touching any EXO_* force,
+# lengthrange or tendon route.
+#
+# The original standalone script set HOLD_FRACTION=1.0 deliberately, having
+# traced that at 0.7 the object "was in literal FREE FALL after retract". That
+# was measured before the friction correction, the placement re-search and the
+# hand-frame drop test, so it is worth re-testing rather than inheriting.
+#
+# glove_dev has only two grasp channels (EXO_FLEX drives index AND middle
+# through one shared tendon), so modulation here is necessarily GLOBAL -- it
+# cannot ease off per digit the way a per-finger K matrix can.
+# MEASURED (glove_dev_modulation_results.txt), 15 trials, survival%(grasp%):
+#                      BOX            CAN            TUNA
+#   open loop      0%(100) 1.84s   0%(100) 2.58s   0%(0)
+#   ease-off 0.50  0%(100) 2.16s 100%(100) 5.00s   0%(0)
+#   ease-off 0.30  7%(100) 2.46s  53%( 73) 5.00s   0%(0)
+#   ease-off 0.15  0%( 47) 1.68s   0%(  0)         0%(0)
+#
+# On the can, easing off to half force takes glove_dev from 0% survival to
+# 100% -- every trial holds the full window. That is the largest single effect
+# any harness change has produced for this device, and it is the OPPOSITE of
+# what the original standalone script concluded ("at 0.7 the object was in
+# literal FREE FALL"). That conclusion was reached before the friction
+# correction, the placement re-search and the hand-frame drop test, and it does
+# not survive any of them.
+#
+# 0.15 is too far -- the grip becomes too weak to gate at all. The box is
+# insensitive (flat faces cage the object; force was never the constraint) and
+# the tuna is unreachable for this device regardless.
+#
+# STILL None BY DEFAULT: adopting it needs a decision, because 0.50 is a tuned
+# number. GraspController's own hold_fraction=0.15 is equally tuned, so there
+# is a symmetry argument for picking one and applying the same reflex to
+# everything -- but that is a change to how every device is driven, not a bug
+# fix, and it belongs to whoever writes this up.
+GLOVE_DEV_HOLD_FRACTION = None   # None = open loop, as shipped
+GLOVE_DEV_SLIP_GAIN = 0.01       # regain grip if the object creeps once held
+
 # Which natural tendon supplies the live arm for each driven joint.
 PROXY_TENDON = {}
 for _t, _js in (("FDP2_tendon", ("mcp2_flexion", "pm2_flexion", "md2_flexion")),
@@ -727,6 +771,9 @@ class GloveDevAdapter(Adapter):
             for dig, bs in self.DIGIT_BODIES.items()
         }
         self.mass_used = mass
+        self._latched = False; self._held_u = 0.0
+        self._anchor = d.xpos[oid].copy()
+        self._digit_body_ids = {b for ids in self.digit_ids.values() for b in ids}
         self._build_strap(m)
         return m, d
 
@@ -746,10 +793,36 @@ class GloveDevAdapter(Adapter):
             self.strap = StrapTransmission(model, sorted(driven), STRAP_STIFFNESS)
 
     def set_input(self, model, data, u):
+        if GLOVE_DEV_HOLD_FRACTION is not None:
+            u = self._modulate(model, data, u)
         data.ctrl[self.flex] = u
         data.ctrl[self.thumb] = u
         if getattr(self, "strap", None) is not None:
             self.strap.apply(data)
+
+    def _modulate(self, model, data, u):
+        """Global ease-off on first contact, then a drift-triggered regrip.
+
+        Deliberately the same shape as GraspController's reflex so the two
+        families are controlled comparably: latch on first touch, drop to a
+        gentle hold, and wind back up if the object starts creeping.
+        """
+        touching = any(
+            (c.geom1 in self.obj_geoms or c.geom2 in self.obj_geoms)
+            and (model.geom_bodyid[c.geom2 if c.geom1 in self.obj_geoms else c.geom1]
+                 in self._digit_body_ids)
+            for c in data.contact[:data.ncon])
+        if touching and not self._latched:
+            self._latched = True
+            self._held_u = GLOVE_DEV_HOLD_FRACTION * u
+            self._anchor = data.xpos[self.oid].copy()
+        if not self._latched:
+            return u
+        drift = float(np.linalg.norm(data.xpos[self.oid] - self._anchor))
+        if drift > 0.003:
+            self._held_u = min(self._held_u + GLOVE_DEV_SLIP_GAIN, 1.0)
+            self._anchor = data.xpos[self.oid].copy()
+        return self._held_u
 
     def release_support(self, model, data):
         data.mocap_pos[self.pillar_mocap] = data.mocap_pos[self.pillar_mocap] + np.array([0.5, 0.0, 0.0])

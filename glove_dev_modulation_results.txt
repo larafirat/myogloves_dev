@@ -1,0 +1,15 @@
+=== BOX   glove_dev   survival%(grasp%) | hold_med   15 trials
+   open loop (shipped)        0% (100)  1.84s   [NG=0 SL=15 SV=0]
+   ease-off 0.50              0% (100)  2.16s   [NG=0 SL=15 SV=0]
+   ease-off 0.30              7% (100)  2.46s   [NG=0 SL=14 SV=1]
+   ease-off 0.15              0% ( 47)  1.68s   [NG=8 SL=7 SV=0]
+=== CAN   glove_dev   survival%(grasp%) | hold_med   15 trials
+   open loop (shipped)        0% (100)  2.58s   [NG=0 SL=15 SV=0]
+   ease-off 0.50            100% (100)  5.00s   [NG=0 SL=0 SV=15]
+   ease-off 0.30             53% ( 73)  5.00s   [NG=4 SL=3 SV=8]
+   ease-off 0.15              0% (  0)  0.00s   [NG=15 SL=0 SV=0]
+=== TUNA   glove_dev   survival%(grasp%) | hold_med   15 trials
+   open loop (shipped)        0% (  0)  0.00s   [NG=15 SL=0 SV=0]
+   ease-off 0.50              0% (  0)  0.00s   [NG=15 SL=0 SV=0]
+   ease-off 0.30              0% (  0)  0.00s   [NG=15 SL=0 SV=0]
+   ease-off 0.15              0% (  0)  0.00s   [NG=15 SL=0 SV=0]
