@@ -111,7 +111,26 @@ CLOSING_SECONDS = 1.5      # ramp u 0->1 over this window, then hold
 # So settling is adaptive: step until the OBJECT is at rest and stays at
 # rest, with a per-adapter cap. The cap is what differs, and it is a
 # property of the environment rather than of the device being measured.
-SETTLE_VEL_EPS = 1e-3      # m/s, object linear speed considered "at rest"
+# Convergence is tested on POSE, not velocity, and that is a correction.
+#
+# The old test was max|qvel| < 1e-3 for 50 consecutive steps. It can never pass:
+# the undriven hand chatters on its low-inertia DoFs (thumb CMC, little-finger
+# PIP) at ~0.1 rad/s indefinitely, driven by forces of order 0.004 N*m. So
+# settle() always ran to its cap -- and then returned ok=True, which means "the
+# object did not fall off its support", NOT "the hand came to rest". Every
+# trial was starting from an undetected state.
+#
+# The pose, though, does converge. Net |dqpos| per 1000 steps on the can:
+#     41.6 -> 17.6 -> 18.6 -> 17.7 -> 6.3 -> 2.3 -> 1.0 -> 1.0 deg  (plateau)
+# with ncon stable at 6 from ~6000. So the transient ends around 6000 steps and
+# what remains is chatter with ~0.5 deg/s of net creep -- worth knowing about,
+# but not the 9 deg of ramp-phase drift a velocity reading implies.
+#
+# Testing displacement over a window measures the thing that matters (is the
+# configuration stable) and is not defeated by chatter.
+SETTLE_POSE_EPS_DEG = 2.0   # max joint displacement over the window below
+SETTLE_WINDOW_STEPS = 1000  # ...measured across this many steps
+SETTLE_VEL_EPS = 1e-3      # retained: still used as the object-at-rest test
 SETTLE_QUIET_STEPS = 50    # consecutive quiet steps required
 GATE_MIN_DIGITS = 2        # >= N distinct digits in contact...
 GATE_MIN_SECONDS = 1.0     # ...continuously for >= this long
@@ -557,18 +576,35 @@ class StrapTransmission:
             data.qfrc_applied[dofadr] -= self.k * (float(data.qpos[qadr]) - q0)
 
 
-def settle(model, data, obj_body_id, cap_steps):
-    """Step until the object is at rest (and stays at rest), or until cap.
+def settle(model, data, obj_body_id, cap_steps, report=None):
+    """Step until the hand's POSE stops changing, or until cap.
 
     Returns (steps_used, ok). ok=False means the object left its support
     during settling -- a SETUP failure, which must not be silently scored as
-    a device failure.
+    a device failure. NOTE ok=True does NOT mean "converged"; pass a dict as
+    `report` to receive {"converged": bool, "residual_deg": float}, since a
+    trial that started from an unconverged pose is worth knowing about.
+
+    See SETTLE_POSE_EPS_DEG for why this tests displacement rather than
+    velocity.
     """
     z0 = float(data.xpos[obj_body_id][2])
     quiet = 0
+    eps = math.radians(SETTLE_POSE_EPS_DEG)
+    ref = data.qpos.copy()
+    resid = float("inf")
     for s_ in range(cap_steps):
         mujoco.mj_step(model, data)
+        if (s_ + 1) % SETTLE_WINDOW_STEPS == 0:
+            resid = float(np.abs(data.qpos - ref).max())
+            ref = data.qpos.copy()
+            if resid < eps:
+                if report is not None:
+                    report.update(converged=True, residual_deg=math.degrees(resid))
+                return s_ + 1, True
         if z0 - float(data.xpos[obj_body_id][2]) > DROP_THRESHOLD_M:
+            if report is not None:
+                report.update(converged=False, residual_deg=math.degrees(resid))
             return s_ + 1, False
         # Quiescence of the WHOLE system, not just the object: the object can
         # read as "at rest" while the hand is still mid-transient (the
@@ -580,6 +616,8 @@ def settle(model, data, obj_body_id, cap_steps):
                 return s_ + 1, True
         else:
             quiet = 0
+    if report is not None:
+        report.update(converged=False, residual_deg=math.degrees(resid))
     return cap_steps, True
 
 
@@ -676,7 +714,13 @@ class GloveDevAdapter(Adapter):
         "extra_thumb": {"extra_thumb", "extra_thumb_v2", "extra_thumb_v2_shaft_body"},
     }
     preshape = "native OP (opponens pollicis) at 0.5"
-    settle_cap = 6000   # OP activation transient needs ~5000 steps
+    # Generous, because settle() now EXITS EARLY on convergence -- a large cap
+    # costs nothing for conditions that settle quickly and rescues the ones
+    # that do not. Measured: box/tuna converge by 4000-6000, the can by 7000,
+    # and the no-pre-shape (port_*) conditions -- a fully flaccid hand with
+    # nothing holding the thumb -- need ~14000. The old 6000 cut off every one
+    # of those silently.
+    settle_cap = 16000
 
     def __init__(self, model_path, obj_name, obj_radius, obj_half_h, obj_mass, label,
                  bottom_offset=0.0):
