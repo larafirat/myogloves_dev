@@ -243,6 +243,85 @@ HAND_DAMPING_BOOST = 1.0
 # leaving the device ordering intact, so it buys nothing.
 ARM_STIFF_BOOST = 8.0
 
+# Live (configuration-dependent) moment arms for the K-matrix devices.
+#
+# THE ASYMMETRY THIS FIXES. glove_dev is a real routed tendon, so MuJoCo derives
+# its moment arm at every joint from the actual path geometry, and that arm
+# changes as the hand moves -- measured, the index MCP arm goes from 5.88 mm to
+# 12.91 mm as that joint flexes 52 deg. D1-D4 have no geometry at all: their
+# torques are written straight into qfrc_applied from a K matrix whose moment
+# arms were measured ONCE at the rest posture. So their arms are frozen at
+# exactly the values that stop being true during a grasp, which is the motion
+# being scored, while glove_dev's stay correct by construction.
+#
+# THE FIX, which invents nothing. K_j * tau_max IS tau_j(rest) = F_j * r_j(rest),
+# so scaling each row by r_j(q)/r_j(rest) recovers F_j * r_j(q) -- the same
+# published force, with the moment arm now live. The live arm comes from the
+# natural flexor tendon already in the model (FDP2-5 for the fingers, FPL for
+# the thumb), which is where the frozen constants in MOMENT_ARMS_MM came from
+# in the first place, so this changes nothing about how the devices were
+# calibrated -- only when the arm is evaluated.
+#
+# MEASURED (live_moment_arms_results.txt). The frozen arms are wrong by a lot
+# during a grasp -- multipliers reached over a D4 closing motion:
+#     middle PIP 1.07-1.66   little MCP 1.33-1.90   ring DIP 1.00-2.11
+#     thumb CMC abduction 1.93   thumb CMC flexion 1.79   thumb MP 0.78
+# so the frozen values understate most finger torques by 30-60% and the thumb
+# CMC by nearly 2x, while OVERSTATING thumb MP. Not a small correction.
+#
+# It does not, however, change the conclusions. 10 trials, survival%(grasp%):
+#     D2 box   0(100) 0.88s -> 0(100) 1.35s
+#     D4 box   0(100) 0.80s -> 0(100) 0.95s
+#     D1 box   0(100) 1.38s -> 0( 50) 1.29s
+#     D4 can  10(100) 0.66s -> 0(100) 0.49s
+# Holds shift by tenths of a second in both directions and no device crosses
+# into surviving. D1's box grasp rate halves, which is the one real change.
+#
+# Off by default, because adopting it would put D1-D4 on live arms while their
+# PUBLISHED calibrations (the F_j values from each paper) were derived against
+# rest-posture arms -- a half-corrected state. Reported as a sensitivity result
+# instead, and available for anyone re-deriving the K matrices from scratch.
+LIVE_MOMENT_ARMS = False
+
+# Which natural tendon supplies the live arm for each driven joint.
+PROXY_TENDON = {}
+for _t, _js in (("FDP2_tendon", ("mcp2_flexion", "pm2_flexion", "md2_flexion")),
+                ("FDP3_tendon", ("mcp3_flexion", "pm3_flexion", "md3_flexion")),
+                ("FDP4_tendon", ("mcp4_flexion", "pm4_flexion", "md4_flexion")),
+                ("FDP5_tendon", ("mcp5_flexion", "pm5_flexion", "md5_flexion")),
+                ("FPL_tendon", ("cmc_abduction", "cmc_flexion", "mp_flexion", "ip_flexion"))):
+    for _j in _js:
+        PROXY_TENDON[_j] = _t
+
+
+class LiveMomentArms:
+    """Per-row multiplier r_j(q)/r_j(rest). See LIVE_MOMENT_ARMS."""
+
+    def __init__(self, model):
+        from exo_devices import JOINT_NAMES, MOMENT_ARMS_MM
+        self.rows = []
+        for row, jname in enumerate(JOINT_NAMES):
+            t = PROXY_TENDON.get(jname)
+            r_rest = MOMENT_ARMS_MM.get(jname)
+            if t is None or not r_rest:
+                continue
+            try:
+                tid = model.tendon(t).id
+                dof = model.joint(jname).dofadr[0]
+            except KeyError:
+                continue
+            self.rows.append((row, tid, dof, r_rest / 1000.0))
+
+    def scale(self, data, n_rows):
+        mult = np.ones(n_rows)
+        for row, tid, dof, r_rest in self.rows:
+            # ten_J is dL/dq; the signed moment arm is -dL/dq (see
+            # compute_moment_arms.py), and r_rest carries the same sign, so the
+            # ratio is positive wherever the tendon has not crossed the joint.
+            r_live = -float(data.ten_J[tid, dof])
+            mult[row] = r_live / r_rest
+        return mult
+
 # Object friction. This repo had been running at [2.5, 0.02, 0.002] with no
 # recorded justification -- 2.5x the sliding, 4x the torsional and 20x the
 # rolling friction of the value MyoAssist uses for the SAME object.
@@ -956,6 +1035,7 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
         self.controller = GraspController(m, self.device, obj_geom,
                                           **dict(self.device.controller_overrides))
         self._build_strap(m)   # .device now exists, so driven_joints() is meaningful
+        self.live_arms = LiveMomentArms(m) if LIVE_MOMENT_ARMS else None
         return m, d
 
     def set_input(self, model, data, u):
@@ -965,6 +1045,8 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
         tau = self.device.torque(u_dev)
         if self.controller.row_gate is not None:
             tau = tau * self.controller.row_gate
+        if self.live_arms is not None:
+            tau = tau * self.live_arms.scale(data, len(tau))
         data.qfrc_applied[:] = 0.0
         for idx, dof in self.rows:
             data.qfrc_applied[dof] = float(tau[idx])

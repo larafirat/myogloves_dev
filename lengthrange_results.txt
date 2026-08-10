@@ -1,0 +1,6 @@
+BOX  as shipped         grasp=100.0%  surv=  0.0%  hold= 1.85s   peak EXO_FLEX =   52.2 N (25.5% of rating)
+BOX  lengthrange fixed  grasp=100.0%  surv=  0.0%  hold= 1.85s   peak EXO_FLEX =  110.9 N (54.2% of rating)
+CAN  as shipped         grasp=100.0%  surv=  0.0%  hold= 2.58s   peak EXO_FLEX =   61.5 N (30.0% of rating)
+CAN  lengthrange fixed  grasp=100.0%  surv=  0.0%  hold= 0.86s   peak EXO_FLEX =  149.9 N (73.2% of rating)
+
+(throwaway copies deleted; myohand_glove_dev*.xml untouched)
