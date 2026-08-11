@@ -403,7 +403,19 @@ GLOVE_DEV_HOLD_FRACTION = None   # None = open loop, as shipped
 # THE FINDING, which stands on its own: glove_dev's weakness on curved objects
 # is over-gripping, not lack of capability. Regulated to a sane grip force it
 # reaches 67% survival on the can where the healthy hand manages 0%.
-FORCE_EASE_OFF = False       # off by default -- diagnostic, not adopted
+# WITHDRAWN as a comparison, kept as a diagnostic. The regulated column that
+# was run alongside the open-loop one is NOT apples-to-apples and must not be
+# reported as such: HealthyHandAdapter.set_input writes muscle activations
+# directly and never calls this regulator, so the reference condition was never
+# regulated while every device was. Since regulating the healthy hand would cut
+# it from ~141 N to ~5 N, that column flattered devices against the hand they
+# are supposed to be measured against.
+#
+# Fixing it would mean regulating the reference too, which is a different
+# experiment -- a benchmark of CONTROLLED grasping rather than maximal-effort
+# grasping. Worth doing, but as its own piece of work with its own methodology,
+# not as a column bolted onto this one. The headline is open-loop throughout.
+FORCE_EASE_OFF = False       # off by default -- diagnostic, not a reported condition
 GRIP_SAFETY_MARGIN = 1.4     # Johansson & Westling: humans hold 10-40% above slip
 GRIP_GAIN = 0.6              # closed-loop rate, in units of u per unit relative error
 

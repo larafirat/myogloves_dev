@@ -1,3 +1,11 @@
+WITHDRAWN AS A COMPARISON -- kept only as a record.
+The 'force-regulated' column below is NOT apples-to-apples. The healthy hand
+was never regulated (HealthyHandAdapter.set_input bypasses the regulator), so
+devices were regulated and the reference was not. Regulating the reference
+would cut it from ~141 N to ~5 N, so this column flatters devices. The open-
+loop column is the valid one and is what the report shows.
+The attribution and grip-ratio sections further down stand on their own.
+
 === BOX   survival%(grasp%) | hold   15 trials
                           open loop           force-regulated
 healthy           93%(100)  5.00s         93%(100)  5.00s
