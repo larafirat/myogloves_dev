@@ -1,0 +1,17 @@
+
+=== MEAT   healthy hand, 5 trials
+   (0.095,0.05,0.115) grasp=   40% surv=   20% hold= 7.72s
+   (0.113,0.05,0.115) grasp=   20% surv=   20% hold=10.00s
+   >>> best (0.095, 0.05, 0.115)  surv=20% grasp=40%
+
+=== SUGAR   healthy hand, 5 trials
+   >>> best (0.095, 0.02, 0.085)  surv=0% grasp=0%
+SUGAR retry, z above its 88 mm half-height
+   (0.095,0.02,0.13) grasp=    0% surv=    0%
+   (0.095,0.05,0.13) grasp=    0% surv=    0%
+   (0.113,0.02,0.13) grasp=    0% surv=    0%
+   (0.113,0.05,0.13) grasp=    0% surv=    0%
+   (0.095,0.02,0.15) grasp=    0% surv=    0%
+   (0.095,0.05,0.15) grasp=    0% surv=    0%
+   (0.113,0.02,0.15) grasp=    0% surv=    0%
+   (0.113,0.05,0.15) grasp=    0% surv=    0%

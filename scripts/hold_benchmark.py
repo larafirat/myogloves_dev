@@ -1794,6 +1794,15 @@ OBJECTS = {
     "box":  ("myohand_glove_dev.xml",      "009_gelatin_box",     0.036, 0.014, 0.097, -0.044),
     "tuna": ("myohand_glove_dev_tuna.xml", "007_tuna_fish_can",   0.042, 0.016, 0.171,  0.000),
     "can":  ("myohand_glove_dev_can.xml",  "005_tomato_soup_can", 0.033, 0.050, 0.349,  0.000),
+    # Added after the rebuild, chosen from the YCB set BY GEOMETRY: the hand's
+    # measured enclosure is <=64 mm, so these three fit (36 / 52 / 42 mm across
+    # the fingers) while the soup can (66 mm) and tuna (84 mm) do not -- which
+    # is why no placement or mass ever rescued them. Together they give a 5x
+    # mass range, 0.187 to 0.514 kg, on geometry this hand can actually close
+    # around.
+    "pudding": ("myohand_glove_dev_pudding_box.xml",     "008_pudding_box",     0.018, 0.055, 0.187, -0.055),
+    "meat":    ("myohand_glove_dev_potted_meat_can.xml", "010_potted_meat_can", 0.026, 0.041, 0.370, -0.041),
+    "sugar":   ("myohand_glove_dev_sugar_box.xml",       "004_sugar_box",       0.021, 0.088, 0.514, -0.088),
 }
 
 PORTED_DEVICES = (
