@@ -149,7 +149,13 @@ def main():
     ap.add_argument("condition", nargs="?", help="adapter key; omit to list")
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--speed", type=float, default=1.0, help="1.0 = real time")
+    ap.add_argument("--pos", default="", help="object placement override, 'x,y,z'")
+    ap.add_argument("--stable-wrist", action="store_true",
+                    help="hold the wrist (the rebuilt rig); off reproduces the old floppy-wrist runs")
     a = ap.parse_args()
+    if a.stable_wrist:
+        import hold_benchmark
+        hold_benchmark.STABILISE_WRIST = True
 
     if not a.condition:
         print("conditions:")
@@ -160,6 +166,8 @@ def main():
         sys.exit(f"unknown condition {a.condition!r}; run with no arguments to list")
 
     ad = pool[a.condition]
+    if a.pos:
+        ad.pos_override = tuple(float(v) for v in a.pos.split(","))
     rng = np.random.default_rng(a.seed)
     m, d = ad.build(rng)
     dt = m.opt.timestep
