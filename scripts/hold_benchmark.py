@@ -360,6 +360,38 @@ PILLAR_HALF_W = 0.012        # support post half-width (m); see the resize in bu
 # and does not wander while the hand is being positioned.
 PIN_OBJECT_DURING_SETTLE = True
 
+# Cap on distal-joint flexion, so the fingers WRAP instead of curling into a
+# fist with the object caught in the tips.
+#
+# Uncapped, the DIPs reach ~93 deg at closure -- their anatomical limit -- for
+# the healthy hand and every device alike, against 10-40 deg in a real power
+# grasp. Watching it, the fingertips visibly over-curl and the index rolls off
+# the object.
+#
+# Muscle-level fixes do not touch it, both tested and rejected:
+#   intrinsics (lumbricals + interossei, 12 actuators, never driven)  93.4 vs 93.3
+#   extensor co-activation (EDC2-5, never driven), swept 0 to 0.5     93.4 -> 93.1
+# Nor does passive joint stiffness, because the drives differ by orders of
+# magnitude: one spring constant gives the healthy hand 0.2 deg and the glove
+# 73.8 deg. A joint LIMIT is drive-independent, which is what makes it work --
+# the fingertip cannot curl past it whatever is pulling.
+#
+# Measured (limits are soft, so the joint settles slightly past the cap):
+#     cap   healthy DIP   glove DIP   healthy surv   glove surv
+#    none      93.3         91.8          100%          83%
+#      45      50.3         47.6          100%         100%
+#      30      35.2         31.9          100%         100%
+#      20      25.0         21.9          100%         100%
+# 30 deg puts both hands inside the natural range at no cost -- the glove
+# actually improves, because a fist cannot hold what a wrap can.
+#
+# WHAT THIS DOES NOT FIX: the load stays tip-heavy (46% of contact force on the
+# distal phalanges, ~0% on the palm for the healthy hand). That is the object
+# being 28 mm thick against a ~64 mm enclosure, so the fingers close nearly
+# fully before meeting it. It needs a thicker object, not a joint limit.
+DIP_FLEXION_CAP_DEG = 30.0
+DIP_JOINTS = ("md2_flexion", "md3_flexion", "md4_flexion", "md5_flexion")
+
 # Arm pose, as position-servo targets. All six were pinned at zero, which fixes
 # the palm facing DOWN -- fine for a flat box taken top-down, wrong for a can.
 # A 101 mm cylinder standing on a table is grasped side-on, palm against its
@@ -1037,6 +1069,14 @@ class GloveDevAdapter(Adapter):
         # Trial randomisation: jitter the object's resting placement.
         m.body_pos[oid] = m.body_pos[oid] + rng.uniform(-POS_JITTER_M, POS_JITTER_M, 3)
 
+        if DIP_FLEXION_CAP_DEG is not None:
+            for _j in DIP_JOINTS:
+                try:
+                    _jid = m.joint(_j).id
+                except KeyError:
+                    continue
+                _lo, _hi = m.jnt_range[_jid]
+                m.jnt_range[_jid] = [_lo, min(_hi, math.radians(DIP_FLEXION_CAP_DEG))]
         pin_contacts(m)
         boost_hand_damping(m, set(self.ARM_JOINTS), skip_bodies={oid})
         for j in self.ARM_JOINTS:

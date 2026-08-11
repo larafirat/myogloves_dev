@@ -1,0 +1,6 @@
+index DIP at closure, load on tips, and survival   (natural DIP 10-40 deg)
+
+  DIP cap none      healthy DIP  93.3 tips 47% palm  0% surv 100%   |   glove   DIP  91.8 tips 25% palm 22% surv  83%
+  DIP cap 45 deg    healthy DIP  50.3 tips 46% palm  0% surv 100%   |   glove   DIP  47.6 tips 27% palm 25% surv 100%
+  DIP cap 30 deg    healthy DIP  35.2 tips 46% palm  0% surv 100%   |   glove   DIP  31.9 tips 58% palm 26% surv 100%
+  DIP cap 20 deg    healthy DIP  25.0 tips 46% palm  0% surv 100%   |   glove   DIP  21.9 tips 60% palm 23% surv 100%
