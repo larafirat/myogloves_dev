@@ -341,6 +341,13 @@ PILLAR_HALF_W = 0.012        # support post half-width (m); see the resize in bu
 # and does not wander while the hand is being positioned.
 PIN_OBJECT_DURING_SETTLE = True
 
+# Arm pose, as position-servo targets. All six were pinned at zero, which fixes
+# the palm facing DOWN -- fine for a flat box taken top-down, wrong for a can.
+# A 101 mm cylinder standing on a table is grasped side-on, palm against its
+# wall, which needs the forearm rotated. Per-adapter override via
+# .arm_pose_override; see scripts/arm_pose_search.py for how a pose is chosen.
+ARM_POSE = {}
+
 # Live (configuration-dependent) moment arms for the K-matrix devices.
 #
 # THE ASYMMETRY THIS FIXES. glove_dev is a real routed tendon, so MuJoCo derives
@@ -988,6 +995,16 @@ class GloveDevAdapter(Adapter):
         # actually moves it along world -z.
         if self.pos_override is not None:
             m.body_pos[oid] = np.array(self.pos_override, dtype=float)
+        # Object ORIENTATION is part of the task, not a device parameter. A
+        # 101 mm can standing upright cannot be taken top-down by this hand,
+        # and rotating the ARM to meet it side-on is not available: the
+        # rotation joints sit at the base, so ARRx=1.4 lifts the palm from
+        # z=0.20 to z=0.72 while ARTz spans only +-0.1, nowhere near enough to
+        # bring it back down. Laying the can on its side presents a 66 mm
+        # cylinder to the same top-down closure the box uses, which is how
+        # anyone picks up a can that is lying down.
+        if getattr(self, "quat_override", None) is not None:
+            m.body_quat[oid] = np.array(self.quat_override, dtype=float)
         # Nominal (un-jittered) placement, kept for positioning the support
         # pillar below. The pillar must NOT follow the jitter: the jitter
         # models placing the object slightly differently on a FIXED support,
@@ -1011,11 +1028,12 @@ class GloveDevAdapter(Adapter):
             m.actuator_biasprm[a][2] = -kp * 0.3
 
         d = mujoco.MjData(m)
+        self.arm_pose = dict(getattr(self, "arm_pose_override", None) or ARM_POSE)
         self.wrist_ids = [m.actuator(w).id for w in WRIST_MUSCLES if _has_actuator(m, w)]
         for aid in self.wrist_ids:
             d.ctrl[aid] = WRIST_COCONTRACTION
         for j in self.ARM_JOINTS:
-            d.ctrl[m.actuator(f"A_{j}").id] = 0.0
+            d.ctrl[m.actuator(f"A_{j}").id] = float(self.arm_pose.get(j, 0.0))
         d.ctrl[m.actuator("OP").id] = 0.5  # documented pre-shape, see docstring
 
         self.oid = oid
