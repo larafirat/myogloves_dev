@@ -262,6 +262,71 @@ HAND_DAMPING_BOOST = 1.0
 # leaving the device ordering intact, so it buys nothing.
 ARM_STIFF_BOOST = 8.0
 
+# Wrist stabilisation. The wrist joints -- pro_sup, deviation, flexion -- have
+# NO actuator driving them in any condition, and damping of only 0.25-0.5. So
+# they flop: measured on the can, the forearm pronates 0 -> 46.1 deg during
+# settling alone and then swings a further 39.4 deg through the grasp, with
+# deviation and flexion swinging 18.5 and 24.5 deg. The hand is changing
+# orientation by tens of degrees while it is supposed to be holding still.
+#
+# That is not a modelling choice anyone made, it is an omission. A real hand
+# co-contracts its wrist muscles to stabilise while grasping, and MyoHand ships
+# every one of them as an actuator (ECRL, ECRB, ECU on the extensor side, FCR,
+# FCU on the flexor side, PT and PQ for pronation). They were simply never
+# commanded.
+#
+# Co-activating antagonist pairs at a low level stiffens the joint without
+# imposing a posture -- the standard way a wrist is held. Applied identically
+# to EVERY condition including the healthy reference, so it is a property of
+# the hand rather than of any device.
+# TRIED AND REJECTED: muscle co-contraction. Activating ECRL/ECRB/ECU/FCR/FCU/
+# PT/PQ together makes the wrist WORSE, not stiffer -- their moment arms and
+# force ratings differ, so equal activation produces a net torque rather than
+# pure co-contraction. Measured total wrist excursion on the can:
+#     co-contraction  0.00 -> pro_sup 10.4  deviation  2.0  flexion 15.5 deg
+#                     0.15 -> pro_sup 16.8  deviation 25.1  flexion 44.6 deg
+# Balancing them per muscle would be a tuning exercise with no source.
+#
+# USED INSTEAD: WristHold, the PD hold already in this file for the exoglove
+# environment, now applied to the glove_dev conditions too. It holds the wrist
+# at whatever pose it settled into rather than imposing one, which is what
+# postural tone does, and it is applied identically to EVERY condition
+# including the healthy reference -- a property of the hand, not of a device.
+WRIST_COCONTRACTION = 0.0    # rejected, see above; kept so the finding is not re-tried
+WRIST_MUSCLES = ("ECRL", "ECRB", "ECU", "FCR", "FCU", "PT", "PQ")
+# STABILISE_WRIST exposes a rig problem rather than fixing one, so it ships
+# OFF and the finding is recorded here.
+#
+# The wrist joints have no actuator in any condition. Measured swing during the
+# driven phase alone: glove_dev/can pronates 39.4 deg, and the HEALTHY hand
+# flexes its wrist 50.6 deg while supposedly holding still. WristHold removes
+# essentially all of it (to 0.0-0.3 deg).
+#
+# But turning it on destroys the benchmark, and the reason is the real finding:
+#     healthy/box   93% survival -> 0%,  grasp 100% -> 93%
+#     glove_dev/box  grasp 100%  -> 0%   (cannot reach the object at all)
+# The placements only work BECAUSE the wrist is floppy. Measured with the wrist
+# held, the palm sits at x=0.121 and the middle fingertip at x=0.147, while the
+# objects are placed at x=0.069 -- 5-8 cm off to the SIDE of the hand. The hand
+# reaches them by pronating ~46 deg during settling to swing the fingers across.
+# Hold the wrist still and there is nothing in front of the fingers.
+#
+# Re-placing the objects in the natural grasp region (x~0.13) does not rescue
+# it either: they then start intersecting the hand and are ejected during
+# settling (setup failures at every candidate tried). The support post being a
+# 160 mm square block did not help and has been reduced to a 24 mm post, but
+# that was not the binding constraint.
+#
+# WHAT THIS ACTUALLY MEANS. The rig was built around a floppy wrist and an
+# object beside the hand, so every grasp it measures is a fingertip pinch
+# reached by wrist rotation -- never a palm-opposed grasp. The palm sits 49-74
+# mm clear of the object surface in all three placements, so palm contact is
+# geometrically impossible. Making the wrist realistic requires re-designing
+# the hand's start pose, the object placement and the support together; it is
+# not a constant that can be flipped.
+STABILISE_WRIST = False      # PD hold on the wrist; see above before enabling
+PILLAR_HALF_W = 0.012        # support post half-width (m); see the resize in build()
+
 # Live (configuration-dependent) moment arms for the K-matrix devices.
 #
 # THE ASYMMETRY THIS FIXES. glove_dev is a real routed tendon, so MuJoCo derives
@@ -911,6 +976,9 @@ class GloveDevAdapter(Adapter):
             m.actuator_biasprm[a][2] = -kp * 0.3
 
         d = mujoco.MjData(m)
+        self.wrist_ids = [m.actuator(w).id for w in WRIST_MUSCLES if _has_actuator(m, w)]
+        for aid in self.wrist_ids:
+            d.ctrl[aid] = WRIST_COCONTRACTION
         for j in self.ARM_JOINTS:
             d.ctrl[m.actuator(f"A_{j}").id] = 0.0
         d.ctrl[m.actuator("OP").id] = 0.5  # documented pre-shape, see docstring
@@ -922,7 +990,11 @@ class GloveDevAdapter(Adapter):
         if self.pos_override is not None:
             top = float(nominal_pos[2]) + self.bottom_offset
             half = top / 2.0
-            m.geom_size[m.geom("glove_dev_support_pillar_geom").id] = [0.08, 0.08, half]
+            # A thin post, not a block. The authored 0.08 half-extent is a
+            # 160 mm square column, which fills the hand's whole workspace --
+            # tolerable only while the object sat off to one side of the hand,
+            # and fatal once it is placed where the fingers actually close.
+            m.geom_size[m.geom("glove_dev_support_pillar_geom").id] = [PILLAR_HALF_W, PILLAR_HALF_W, half]
             d.mocap_pos[self.pillar_mocap] = [float(nominal_pos[0]),
                                               float(nominal_pos[1]), half]
         self.obj_geoms = [i for i in range(m.ngeom) if m.geom_bodyid[i] == oid]
@@ -936,6 +1008,9 @@ class GloveDevAdapter(Adapter):
         self._digit_body_ids = {b for ids in self.digit_ids.values() for b in ids}
         self.grip = GripForceRegulator(m, self, mass) if FORCE_EASE_OFF else None
         self._build_strap(m)
+        # Built AFTER settling would be ideal (it should hold the settled pose,
+        # not the authored one), so it is created lazily on first use instead.
+        self.wrist_hold = None
         return m, d
 
     def _build_strap(self, model):
@@ -953,7 +1028,17 @@ class GloveDevAdapter(Adapter):
             driven, _ = driven_joints(model, self)
             self.strap = StrapTransmission(model, sorted(driven), STRAP_STIFFNESS)
 
+    def _hold_wrist(self, model, data):
+        if not STABILISE_WRIST:
+            return
+        if self.wrist_hold is None:
+            # First driven step: the hand has finished settling, so this is the
+            # pose postural tone should maintain.
+            self.wrist_hold = WristHold(model, data)
+        self.wrist_hold.apply(model, data)
+
     def set_input(self, model, data, u):
+        self._hold_wrist(model, data)
         if getattr(self, "grip", None) is not None:
             u = self.grip.step(model, data, u)
         elif GLOVE_DEV_HOLD_FRACTION is not None:
@@ -1029,6 +1114,7 @@ class HealthyHandAdapter(GloveDevAdapter):
         return m, d
 
     def set_input(self, model, data, u):
+        self._hold_wrist(model, data)
         data.ctrl[self.flex] = 0.0
         data.ctrl[self.thumb] = 0.0
         for aid in self.healthy_ids:
@@ -1275,6 +1361,7 @@ class KMatrixInGloveDevAdapter(GloveDevAdapter):
         return m, d
 
     def set_input(self, model, data, u):
+        self._hold_wrist(model, data)
         data.ctrl[self.flex] = 0.0
         data.ctrl[self.thumb] = 0.0
         u_dev = self.controller.step(model, data)
