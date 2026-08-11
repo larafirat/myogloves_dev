@@ -324,7 +324,10 @@ WRIST_MUSCLES = ("ECRL", "ECRB", "ECU", "FCR", "FCU", "PT", "PQ")
 # geometrically impossible. Making the wrist realistic requires re-designing
 # the hand's start pose, the object placement and the support together; it is
 # not a constant that can be flipped.
-STABILISE_WRIST = False      # PD hold on the wrist; see above before enabling
+STABILISE_WRIST = True       # ON: the rebuilt rig. The old floppy-wrist runs
+                             # are reproduced with False, but see above -- they
+                             # measured fingertip pinches reached by 46 deg of
+                             # uncommanded pronation.
 PILLAR_HALF_W = 0.012        # support post half-width (m); see the resize in build()
 
 # Present the object at a DEFINED pose instead of hoping it settles into one.
