@@ -1,0 +1,41 @@
+=== BOX  healthy hand, wrist held, object pinned during settle, 6 trials
+   (0.095,0.02,0.135) grasp=  100% surv=  100% hold= 5.00s
+   (0.095,0.035,0.135) grasp=   50% surv=   50% hold= 5.00s
+   (0.095,0.05,0.135) grasp=   67% surv=   67% hold= 5.00s
+   (0.113,0.02,0.135) grasp=  100% surv=  100% hold= 5.00s
+   (0.113,0.035,0.135) grasp=  100% surv=  100% hold= 5.00s
+   (0.113,0.05,0.135) grasp=  100% surv=  100% hold= 5.00s
+   (0.095,0.02,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.035,0.145) grasp=   17% surv=   17% hold= 5.00s
+   (0.095,0.05,0.145) grasp=   67% surv=   67% hold= 5.00s
+   (0.113,0.02,0.145) grasp=   17% surv=   17% hold= 5.00s
+   (0.113,0.035,0.145) grasp=  100% surv=  100% hold= 5.00s
+   (0.113,0.05,0.145) grasp=  100% surv=  100% hold= 5.00s
+   (0.095,0.02,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.035,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.05,0.155) grasp=   17% surv=   17% hold= 5.00s
+   (0.113,0.02,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.035,0.155) grasp=   33% surv=   33% hold= 5.00s
+   (0.113,0.05,0.155) grasp=  100% surv=  100% hold= 5.00s
+   >>> best (0.095, 0.02, 0.135): grasp=100% surv=100% hold=5.00s
+=== CAN  healthy hand, wrist held, object pinned during settle, 6 trials
+   (0.095,0.02,0.135) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.035,0.135) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.05,0.135) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.02,0.135) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.035,0.135) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.05,0.135) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.02,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.035,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.05,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.02,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.035,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.05,0.145) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.02,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.035,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.095,0.05,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.02,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.035,0.155) grasp=    0% surv=    0% hold= 0.00s
+   (0.113,0.05,0.155) grasp=    0% surv=    0% hold= 0.00s
+   >>> best (0.095, 0.02, 0.135): grasp=0% surv=0% hold=0.00s
+=== TUNA  healthy hand, wrist held, object pinned during settle, 6 trials

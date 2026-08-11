@@ -327,6 +327,20 @@ WRIST_MUSCLES = ("ECRL", "ECRB", "ECU", "FCR", "FCU", "PT", "PQ")
 STABILISE_WRIST = False      # PD hold on the wrist; see above before enabling
 PILLAR_HALF_W = 0.012        # support post half-width (m); see the resize in build()
 
+# Present the object at a DEFINED pose instead of hoping it settles into one.
+#
+# Placing the object inside the hand's grasp volume -- which is the whole point
+# of the rebuild -- means it is touching the fingers before the trial starts, so
+# it slides during settling: measured drift of 32-46 mm at the first candidates
+# that achieved palm contact. A grasp that begins from a pose 40 mm from the one
+# specified is not the experiment that was designed.
+#
+# So the object is held fixed while the hand settles and released the instant
+# the device starts driving. That is also what happens physically in the task
+# these devices are for -- an object sits still on a table, or is handed over,
+# and does not wander while the hand is being positioned.
+PIN_OBJECT_DURING_SETTLE = True
+
 # Live (configuration-dependent) moment arms for the K-matrix devices.
 #
 # THE ASYMMETRY THIS FIXES. glove_dev is a real routed tendon, so MuJoCo derives
@@ -757,6 +771,17 @@ class StrapTransmission:
             data.qfrc_applied[dofadr] -= self.k * (float(data.qpos[qadr]) - q0)
 
 
+def _object_dofs_of(model, obj_body_id):
+    dofs = []
+    for j in range(model.njnt):
+        if model.jnt_bodyid[j] != obj_body_id:
+            continue
+        n = {mujoco.mjtJoint.mjJNT_FREE: 6, mujoco.mjtJoint.mjJNT_BALL: 3,
+             mujoco.mjtJoint.mjJNT_SLIDE: 1, mujoco.mjtJoint.mjJNT_HINGE: 1}[model.jnt_type[j]]
+        dofs.extend(range(model.jnt_dofadr[j], model.jnt_dofadr[j] + n))
+    return dofs
+
+
 def settle(model, data, obj_body_id, cap_steps, report=None):
     """Step until the hand's POSE stops changing, or until cap.
 
@@ -774,8 +799,18 @@ def settle(model, data, obj_body_id, cap_steps, report=None):
     eps = math.radians(SETTLE_POSE_EPS_DEG)
     ref = data.qpos.copy()
     resid = float("inf")
+    pin = _object_dofs_of(model, obj_body_id) if PIN_OBJECT_DURING_SETTLE else []
+    qpin = data.qpos.copy()
     for s_ in range(cap_steps):
         mujoco.mj_step(model, data)
+        for dof in pin:
+            data.qvel[dof] = 0.0
+        if pin:
+            for j in range(model.njnt):
+                if model.jnt_bodyid[j] == obj_body_id:
+                    qa = model.jnt_qposadr[j]
+                    n = 7 if model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE else 1
+                    data.qpos[qa:qa + n] = qpin[qa:qa + n]
         if (s_ + 1) % SETTLE_WINDOW_STEPS == 0:
             resid = float(np.abs(data.qpos - ref).max())
             ref = data.qpos.copy()
