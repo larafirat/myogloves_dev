@@ -78,8 +78,20 @@ def style_device(model, adapter):
     """
     from exo_devices import JOINT_NAMES
 
-    is_tyrone = not hasattr(adapter, "device_name")
+    # The healthy control wears NO device, so it must not be drawn wearing
+    # Tyrone's tendons. Testing only for a missing device_name made it look
+    # like his glove, which is exactly the misrepresentation this function
+    # exists to prevent.
+    is_tyrone = not hasattr(adapter, "device_name") and adapter.wears_device
     legend = []
+    if not adapter.wears_device:
+        for name in EXO_TENDONS:
+            try:
+                model.tendon_rgba[model.tendon(name).id] = (0, 0, 0, 0)
+            except KeyError:
+                pass
+        return ["no device: bare hand, driven by its own muscles "
+                "(exo tendons hidden -- this condition wears nothing)"]
 
     if not is_tyrone:
         for name in EXO_TENDONS:
