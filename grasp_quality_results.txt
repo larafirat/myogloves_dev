@@ -1,0 +1,6 @@
+index angles + contact force by segment   (natural: MCP 60-90, PIP 60-90, DIP 10-40)
+
+ext tone 0.00   MCP  82.7 PIP  87.2 DIP  93.4   palm   13 prox   75 mid   84 dist  131 N   grasp=100% surv=100%
+ext tone 0.15   MCP  81.9 PIP  88.3 DIP  93.3   palm   23 prox   11 mid   83 dist  134 N   grasp=100% surv=100%
+ext tone 0.30   MCP  81.7 PIP  88.5 DIP  93.2   palm   17 prox    7 mid   82 dist  130 N   grasp=100% surv=100%
+ext tone 0.50   MCP  82.0 PIP  86.5 DIP  93.1   palm   20 prox    8 mid   81 dist  123 N   grasp=100% surv=100%
