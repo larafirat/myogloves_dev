@@ -1,0 +1,44 @@
+object friction: [1.0, 0.005, 0.0001]  (myoassist)
+transmission: STRAP_STIFFNESS = 0.0 N*m/rad  (ideal)
+HEALTHY/box @0.1kg                 surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+HEALTHY/box @0.35kg                surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+HEALTHY/box @0.7kg                 surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+HEALTHY/box @1.2kg                 surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+HEALTHY/box @2.0kg                 surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+glove_dev/box @0.1kg               surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+glove_dev/box @0.35kg              surv= 93.3%  grasp=100.0%  hold_med= 5.00s  sd=0.22  [NG=0 SL=1 SV=14] *censored
+glove_dev/box @0.7kg               surv= 73.3%  grasp= 86.7%  hold_med= 5.00s  sd=0.73  [NG=2 SL=2 SV=11] *censored
+glove_dev/box @1.2kg               surv= 33.3%  grasp= 86.7%  hold_med= 4.16s  sd=0.83  [NG=2 SL=8 SV=5] *censored
+glove_dev/box @2.0kg               surv=  0.0%  grasp= 93.3%  hold_med= 0.34s  sd=1.60  [NG=1 SL=14 SV=0]
+PORT+OP/box/D1_underactuated_distal @0.1kg surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+PORT+OP/box/D1_underactuated_distal @0.35kg surv=  0.0%  grasp=100.0%  hold_med= 0.24s  sd=0.02  [NG=0 SL=15 SV=0]
+PORT+OP/box/D1_underactuated_distal @0.7kg surv=  0.0%  grasp=100.0%  hold_med= 0.13s  sd=0.01  [NG=0 SL=15 SV=0]
+PORT+OP/box/D1_underactuated_distal @1.2kg surv=  0.0%  grasp=100.0%  hold_med= 0.12s  sd=0.00  [NG=0 SL=15 SV=0]
+PORT+OP/box/D1_underactuated_distal @2.0kg surv=  0.0%  grasp= 93.3%  hold_med= 0.11s  sd=0.00  [NG=1 SL=14 SV=0]
+PORT+OP/box/D2_synergy_cross_finger @0.1kg surv= 86.7%  grasp=100.0%  hold_med= 5.00s  sd=1.35  [NG=0 SL=2 SV=13] *censored
+PORT+OP/box/D2_synergy_cross_finger @0.35kg surv=  0.0%  grasp=100.0%  hold_med= 0.16s  sd=0.01  [NG=0 SL=15 SV=0]
+PORT+OP/box/D2_synergy_cross_finger @0.7kg surv=  0.0%  grasp=100.0%  hold_med= 0.12s  sd=0.00  [NG=0 SL=15 SV=0]
+PORT+OP/box/D2_synergy_cross_finger @1.2kg surv=  0.0%  grasp=100.0%  hold_med= 0.11s  sd=0.00  [NG=0 SL=15 SV=0]
+PORT+OP/box/D2_synergy_cross_finger @2.0kg surv=  0.0%  grasp=100.0%  hold_med= 0.11s  sd=0.00  [NG=0 SL=15 SV=0]
+PORT+OP/box/D4_v2_hybrid_per_finger @0.1kg surv=100.0%  grasp=100.0%  hold_med= 5.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+PORT+OP/box/D4_v2_hybrid_per_finger @0.35kg surv= 86.7%  grasp=100.0%  hold_med= 5.00s  sd=1.61  [NG=0 SL=2 SV=13] *censored
+PORT+OP/box/D4_v2_hybrid_per_finger @0.7kg surv=  0.0%  grasp=100.0%  hold_med= 0.16s  sd=0.33  [NG=0 SL=15 SV=0]
+PORT+OP/box/D4_v2_hybrid_per_finger @1.2kg surv=  0.0%  grasp=100.0%  hold_med= 0.13s  sd=0.02  [NG=0 SL=15 SV=0]
+PORT+OP/box/D4_v2_hybrid_per_finger @2.0kg surv=  0.0%  grasp=100.0%  hold_med= 0.11s  sd=0.01  [NG=0 SL=15 SV=0]
+PORT/box/D1_underactuated_distal @0.1kg surv=  0.0%  grasp=  6.7%  hold_med= 0.43s  sd=0.00  [NG=14 SL=1 SV=0]
+PORT/box/D1_underactuated_distal @0.35kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D1_underactuated_distal @0.7kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D1_underactuated_distal @1.2kg surv=  0.0%  grasp=  6.7%  hold_med= 0.11s  sd=0.00  [NG=14 SL=1 SV=0]
+PORT/box/D1_underactuated_distal @2.0kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D2_synergy_cross_finger @0.1kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D2_synergy_cross_finger @0.35kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D2_synergy_cross_finger @0.7kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D2_synergy_cross_finger @1.2kg surv=  0.0%  grasp=  6.7%  hold_med= 0.11s  sd=0.00  [NG=14 SL=1 SV=0]
+PORT/box/D2_synergy_cross_finger @2.0kg surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+PORT/box/D4_v2_hybrid_per_finger @0.1kg surv= 13.3%  grasp= 26.7%  hold_med= 2.85s  sd=2.60  [NG=11 SL=2 SV=2] *censored
+PORT/box/D4_v2_hybrid_per_finger @0.35kg surv=  0.0%  grasp= 26.7%  hold_med= 0.14s  sd=0.01  [NG=11 SL=4 SV=0]
+PORT/box/D4_v2_hybrid_per_finger @0.7kg surv=  0.0%  grasp= 20.0%  hold_med= 0.12s  sd=0.00  [NG=12 SL=3 SV=0]
+PORT/box/D4_v2_hybrid_per_finger @1.2kg surv=  0.0%  grasp= 20.0%  hold_med= 0.12s  sd=0.01  [NG=12 SL=3 SV=0]
+PORT/box/D4_v2_hybrid_per_finger @2.0kg surv=  0.0%  grasp= 13.3%  hold_med= 0.13s  sd=0.01  [NG=13 SL=2 SV=0]
+
+wrote myogloves_dev/rebuilt_masssweep.json
