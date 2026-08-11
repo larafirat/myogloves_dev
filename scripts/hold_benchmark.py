@@ -191,7 +191,23 @@ HAND_REF_BODY = "capitate"
 #                 the comparable "it hit the floor" threshold is ~0.15 m, not
 #                 the 0.05 m that was in use when the arm sag was 0.039 m.
 DROP_MODE = "relative"
-T_MAX_DEFAULT = 5.0
+# Measurement window. 10 s, taken from myoMPL (Tan et al., MyoAssist 0.1,
+# ICORR 2025): "Each trial lasts up to 10 seconds". Our 1 s contact gate
+# already matches its "each limb must maintain contact with the object for at
+# least 1 second", so this aligns the second half of the protocol with the
+# same source the object and friction come from.
+#
+# It is not a free parameter -- it decides how flattering the benchmark is.
+# Survival at 0.7 kg, 12 trials:
+#              T=5s   T=10s   T=20s
+#   healthy    100%    100%    100%
+#   Tyrone      83%     42%      0%
+#   D1/D2/D4     0%      0%      0%
+# The ORDER never changes, but the old 5 s window let a device look close to
+# the healthy hand when it was really failing slowly. At 20 s only the hand
+# survives at all. 10 s is the published value; 20 s would discriminate harder
+# but has no source behind it.
+T_MAX_DEFAULT = 10.0
 # Soft-tissue damping boost: 1.0 (off), and the reasoning below was partly
 # WRONG -- corrected here rather than quietly.
 #
