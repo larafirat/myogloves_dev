@@ -154,6 +154,25 @@ GATE_MIN_SECONDS = 1.0     # ...continuously for >= this long
 # apart".
 GATE_REQUIRE_OPPOSITION = True
 GATE_OPPOSITION_DOT = -0.5
+
+# ...AND the contact has to be in the right PLACE on the hand.
+#
+# DIGIT_BODIES maps each digit to all of its phalanges, so contact on the BASE
+# of the index counted as "index in contact". That is how a grasp with the
+# fingertips swept 22-40 mm past the object still satisfied the gate and
+# proceeded to the hold phase: the gate asked which DIGIT was touching and
+# never which SEGMENT. Measured on the box, the index tip sits at +36 mm
+# (healthy) and +54 mm (glove) in the object's frame against a 14 mm half-
+# extent, while the proximal segments carry the load.
+#
+# A grasp worth scoring puts fingertips on the object and loads the palm, so
+# the gate now requires both. Anything that cannot satisfy it is a NO_GRASP
+# rather than a hold measured on a configuration the pictures show is wrong.
+GATE_REQUIRE_DISTAL = True    # >= this many digits touching via a DISTAL segment
+GATE_MIN_DISTAL_DIGITS = 2
+GATE_REQUIRE_PALM = True      # and the palm (metacarpals) must be loaded too
+DISTAL_BODIES = {"distph2", "distph3", "distph4", "distph5", "distal_thumb"}
+PALM_BODIES = {"secondmc", "thirdmc", "fourthmc", "fifthmc", "firstmc"}
 DROP_THRESHOLD_M = 0.05    # object falling this far RELATIVE TO THE HAND counts
                            # as failure -- see HAND_REF_BODY below
 # Measured in the HAND's frame, not the world's. This was a real defect, and it
@@ -1784,6 +1803,25 @@ def _gate_satisfied(model, data, adapter):
     digits = set(normals)
     if len(digits) < GATE_MIN_DIGITS:
         return digits, False
+    if GATE_REQUIRE_DISTAL or GATE_REQUIRE_PALM:
+        distal, palm = set(), False
+        for i in range(data.ncon):
+            c = data.contact[i]
+            if c.geom1 in adapter.obj_geoms:
+                other = model.geom_bodyid[c.geom2]
+            elif c.geom2 in adapter.obj_geoms:
+                other = model.geom_bodyid[c.geom1]
+            else:
+                continue
+            bname = model.body(other).name
+            if bname in DISTAL_BODIES:
+                distal.add(bname)
+            elif bname in PALM_BODIES:
+                palm = True
+        if GATE_REQUIRE_DISTAL and len(distal) < GATE_MIN_DISTAL_DIGITS:
+            return digits, False
+        if GATE_REQUIRE_PALM and not palm:
+            return digits, False
     if not GATE_REQUIRE_OPPOSITION:
         return digits, True
     keys = sorted(normals)
