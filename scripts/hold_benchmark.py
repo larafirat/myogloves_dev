@@ -385,10 +385,18 @@ PIN_OBJECT_DURING_SETTLE = True
 # 30 deg puts both hands inside the natural range at no cost -- the glove
 # actually improves, because a fist cannot hold what a wrap can.
 #
-# WHAT THIS DOES NOT FIX: the load stays tip-heavy (46% of contact force on the
-# distal phalanges, ~0% on the palm for the healthy hand). That is the object
-# being 28 mm thick against a ~64 mm enclosure, so the fingers close nearly
-# fully before meeting it. It needs a thicker object, not a joint limit.
+# IT ALSO FIXES THE LOAD DISTRIBUTION, which was not expected. Uncapped, the
+# healthy hand put 47% of contact force on the fingertips and ZERO on the palm
+# -- the palm sat 55-69 mm from the object centre while contact needed 24 mm
+# (object half-thickness 14 mm plus the metacarpal capsule radius 10 mm), so it
+# could not reach. Capped, the fingers stop short of a fist and press the object
+# back against the palm instead:
+#     gelatin, healthy   palm  0% -> 30%   tips 47% -> 32%
+#     gelatin, glove     palm 22% -> 48%   tips 25% -> 41%
+#     pudding, healthy   palm  8% -> 32%
+# So the earlier conclusion that this needed a thicker object was wrong: the
+# closed-hand palm-to-fingertip span is 47 mm, not the ~64 mm enclosure figure,
+# and a 28 mm object reaches the palm once the fingers stop curling past it.
 DIP_FLEXION_CAP_DEG = 30.0
 DIP_JOINTS = ("md2_flexion", "md3_flexion", "md4_flexion", "md5_flexion")
 

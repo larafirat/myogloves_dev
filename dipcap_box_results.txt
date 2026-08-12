@@ -1,0 +1,13 @@
+object friction: [1.0, 0.005, 0.0001]  (myoassist)
+transmission: STRAP_STIFFNESS = 0.0 N*m/rad  (ideal)
+HEALTHY/box                        surv=100.0%  grasp=100.0%  hold_med=10.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+glove_dev/box                      surv=100.0%  grasp=100.0%  hold_med=10.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+PORT+OP/box/D1_underactuated_distal surv=100.0%  grasp=100.0%  hold_med=10.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+PORT+OP/box/D2_synergy_cross_finger surv= 73.3%  grasp=100.0%  hold_med=10.00s  sd=3.32  [NG=0 SL=4 SV=11] *censored
+PORT+OP/box/D4_v2_hybrid_per_finger surv=100.0%  grasp=100.0%  hold_med=10.00s  sd=0.00  [NG=0 SL=0 SV=15] *censored
+PORT/box/D1_underactuated_distal   surv=  0.0%  grasp= 13.3%  hold_med= 0.39s  sd=0.19  [NG=13 SL=2 SV=0]
+PORT/box/D2_synergy_cross_finger   surv=  0.0%  grasp=  6.7%  hold_med= 0.30s  sd=0.00  [NG=14 SL=1 SV=0]
+PORT/box/D4_v2_hybrid_per_finger   surv= 20.0%  grasp= 26.7%  hold_med=10.00s  sd=4.69  [NG=11 SL=1 SV=3] *censored
+SPLINT/box/D3_uniform_single_dof   surv=  0.0%  grasp=  0.0%  hold_med= 0.00s  sd=0.00  [NG=15 SL=0 SV=0]
+
+wrote myogloves_dev/dipcap_box.json
