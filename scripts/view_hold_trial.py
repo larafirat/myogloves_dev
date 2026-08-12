@@ -150,12 +150,18 @@ def main():
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--speed", type=float, default=1.0, help="1.0 = real time")
     ap.add_argument("--pos", default="", help="object placement override, 'x,y,z'")
+    ap.add_argument("--fix-lengthrange", action="store_true",
+                    help="apply the recommended EXO_FLEX lengthrange (0.2217-0.2861); "
+                         "see the comment in myohand_glove_dev.xml")
     ap.add_argument("--stable-wrist", action="store_true",
                     help="hold the wrist (the rebuilt rig); off reproduces the old floppy-wrist runs")
     a = ap.parse_args()
     if a.stable_wrist:
         import hold_benchmark
         hold_benchmark.STABILISE_WRIST = True
+    if a.fix_lengthrange:
+        import hold_benchmark
+        hold_benchmark.EXO_FLEX_LENGTHRANGE = (0.2217, 0.2861)
 
     if not a.condition:
         print("conditions:")

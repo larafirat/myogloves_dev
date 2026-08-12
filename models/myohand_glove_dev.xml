@@ -348,6 +348,43 @@
 
     <actuator>
         <muscle name="EXO_THUMB" force="180" class="muscle" tendon="exo_thumb_tendon" lengthrange="0.0314264 0.0988708"/>
+        <!-- RECOMMENDED CHANGE, NOT APPLIED - lengthrange="0.3400 0.7800" appears
+             to be a leftover rather than a measured value, and it is costing this
+             device about two thirds of its force.
+
+             exo_flex_tendon can only ever reach 0.2217 - 0.2861 m. That was measured
+             by sampling the joints the tendon crosses over their full ranges
+             (scripts/lengthrange_diagnostic.py). The declared MINIMUM of 0.3400 is
+             ABOVE the achievable MAXIMUM of 0.2861, so the muscle never enters its
+             declared band at all and sits permanently on the weak ascending limb of
+             MuJoCo's force-length curve.
+
+             The declared band does not match any version of the routing either: the
+             current path gives 0.22-0.29 m, and restoring the two commented-out
+             waypoints in exo_flex_tendon below (FDP3-P3 and Elbow_PT_ECRL) gives
+             0.99 m. Neither is 0.34-0.78.
+
+             MEASURED EFFECT of changing it to lengthrange="0.2217 0.2861"
+             (scripts/lengthrange_effect.py, gelatin box, current rig):
+
+                                  peak EXO_FLEX    index tip   middle tip     palm
+                 as declared     60.7 N (29.6%)      12.9 N       11.2 N    28.5 N
+                 corrected      176.9 N (86.4%)      47.0 N       35.8 N    85.8 N
+
+                 load capacity, survival%(grasp%), 12 trials
+                                   0.1 kg    0.35 kg     0.7 kg     1.2 kg    2.0 kg
+                 as declared     92%( 92)   92%( 92)   50%( 92)   33%(100)   0%(100)
+                 corrected      100%(100)  100%(100)  100%(100)  100%(100)   8%( 92)
+                 healthy hand   100%(100)  100%(100)  100%(100)  100%(100) 100%(100)
+
+             Corrected, the glove matches an unassisted hand to 1.2 kg. As declared it
+             falls to 50% at 0.7 kg. Every glove_dev result published for this project
+             so far was produced at under a third of the device's designed force.
+
+             LEFT UNCHANGED because force, lengthrange and tendon routing are the
+             author's device parameters. To try it without editing this file, set
+             EXO_FLEX_LENGTHRANGE = (0.2217, 0.2861) in scripts/hold_benchmark.py, or
+             pass --fix-lengthrange to scripts/view_hold_trial.py. -->
         <muscle name="EXO_FLEX" force="204.8" class="muscle" tendon="exo_flex_tendon" lengthrange="0.3400 0.7800"/>
         <muscle name="EXO_EXT" force="71.6" class="muscle" tendon="exo_ext_tendon" lengthrange="0.3960 0.8455"/>
 
