@@ -1,0 +1,14 @@
+as declared 0.340-0.780
+   peak EXO_FLEX   60.7 N (29.6% of rating)
+   index tip   12.9 N   middle tip   11.2 N   palm   28.5 N
+   grasp   100%   survival   100%
+corrected 0.222-0.286
+   peak EXO_FLEX  176.9 N (86.4% of rating)
+   index tip   47.0 N   middle tip   35.8 N   palm   85.8 N
+   grasp   100%   survival   100%
+
+glove_dev on the box, survival%(grasp%), 12 trials per cell
+                                  0.1 kg       0.35 kg        0.7 kg        1.2 kg        2.0 kg
+as declared                     92%( 92)      92%( 92)      50%( 92)      33%(100)       0%(100)
+lengthrange corrected          100%(100)     100%(100)     100%(100)     100%(100)       8%( 92)
+healthy hand (reference)       100%(100)     100%(100)     100%(100)     100%(100)     100%(100)

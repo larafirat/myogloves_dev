@@ -379,6 +379,19 @@ PILLAR_HALF_W = 0.012        # support post half-width (m); see the resize in bu
 # and does not wander while the hand is being positioned.
 PIN_OBJECT_DURING_SETTLE = True
 
+# EXPERIMENTAL, default OFF: correct EXO_FLEX's lengthrange at runtime.
+#
+# The device declares lengthrange="0.3400 0.7800" but the tendon can only ever
+# reach 0.2217-0.2861 m (measured by sampling the joints it crosses). The
+# declared minimum is ABOVE the achievable maximum, so the muscle sits
+# permanently on the weak ascending limb of its force-length curve and delivers
+# ~25% of its 204.8 N rating. That is the likeliest reason its fingertip forces
+# are ~12 N against the healthy hand's ~85 N.
+#
+# Applied as a runtime override rather than an edit, so myohand_glove_dev.xml
+# stays exactly as authored and this is reversible with one flag.
+EXO_FLEX_LENGTHRANGE = None      # e.g. (0.2217, 0.2861) to correct it
+
 # Cap on distal-joint flexion, so the fingers WRAP instead of curling into a
 # fist with the object caught in the tips.
 #
@@ -1113,6 +1126,8 @@ class GloveDevAdapter(Adapter):
             m.actuator_biasprm[a][1] = -kp
             m.actuator_biasprm[a][2] = -kp * 0.3
 
+        if EXO_FLEX_LENGTHRANGE is not None and _has_actuator(m, "EXO_FLEX"):
+            m.actuator_lengthrange[m.actuator("EXO_FLEX").id] = EXO_FLEX_LENGTHRANGE
         d = mujoco.MjData(m)
         self.arm_pose = dict(getattr(self, "arm_pose_override", None) or ARM_POSE)
         self.wrist_ids = [m.actuator(w).id for w in WRIST_MUSCLES if _has_actuator(m, w)]
